@@ -1,0 +1,78 @@
+schema: 2
+skill: dev-ship
+version: 2
+when: the ship stage of the dev-cycle flow
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [bash, str_replace_based_edit_tool, pr_push, pr_create, poll]
+  optional_tools: [task, pr_edit, pr_review_bot_run]
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  prefs:
+    say: >
+      Run the preference pass before anything is pushed. Read the whole diff of every change
+      (e.g. jj diff -r <bookmark> -R <repo path>) against the user's code preferences, from their
+      instructions and the repo guide, defaulting to: no comments beyond one line, no mention of
+      tickets or earlier implementations, no cruft, and only tests that assert real behaviour.
+      Write ${RUN}/prefs.md with one line per change, "<id>: clean" or "<id>: fixed <what>". Fix
+      comments and cruft yourself and rerun that change's verify. Anything that would change
+      behaviour or a test's assertions has not been reviewed: stop and ask the user.
+    evidence:
+      - call: { tool: bash, when: 'call.commands.exists(c, (cmd(c, "jj diff") && (hasFlag(c, "-r") || hasFlag(c, "--revisions") || hasFlag(c, "--from") || hasFlag(c, "--to") || c.matches("\\s-r\\S"))) || (cmd(c, "jj show") && revs(c) != ["@"]) || (cmd(c, "jj log") && (hasFlag(c, "-p") || hasFlag(c, "--patch")) && (hasFlag(c, "-r") || hasFlag(c, "--revisions") || c.matches("\\s-r\\S"))))' }
+      - artifact_lines: { path: "${RUN}/prefs.md", pattern: "^[a-z0-9][a-z0-9-]*: (clean|fixed \\S)", min: 1 }
+
+  bodies:
+    say: >
+      Write ${RUN}/pr-<id>.md for each change, under 400 words, short and plain: one or two
+      sentences on what changed and why, then "## Testing", one line per criterion that change
+      closes, "- <criterion name>: <how it was proven>" naming the test, the review, or the
+      recording. Say whether the agents agreed or the user accepted an escalation. No per-function
+      change list, no before/after table, no sentence per test. Link the ticket rather than
+      restating it. Then write ${RUN}/bodies.md with one line per change, "<id>: pr-<id>.md".
+    evidence:
+      - artifact_lines: { path: "${RUN}/bodies.md", pattern: "^[a-z0-9][a-z0-9-]*: pr-[a-z0-9-]+\\.md\\s*$", min: 1 }
+
+  push:
+    say: >
+      Push each change from the bottom of the stack up with pr_push: its bookmark, rev the bookmark,
+      repo the GitHub owner/name. Each goes to a draft PR; pr_push stops for the user's approval on a
+      bookmark whose PR is open and not a draft.
+    evidence:
+      - call: { tool: pr_push }
+
+  open:
+    say: >
+      Open each PR as a draft with pr_create, bottom up: head its bookmark, base its plan base, the
+      title its plan name, the body from ${RUN}/pr-<id>.md. Never mark one ready.
+    evidence:
+      - call: { tool: pr_create }
+
+  review-bot:
+    say: Run the repo's review bot on every PR with pr_review_bot_run.
+    optional: true
+    when: { available: pr_review_bot_run }
+    evidence:
+      - call: { tool: pr_review_bot_run }
+
+  pr-env:
+    say: >
+      When ${RUN}/acceptance.yaml has e2e criteria, poll each PR's checks until its preview environment
+      is deployed and healthy (the repo guide says how that environment is requested), and read the app
+      URLs from the deploy bot's comment or the check output. Search the record store, when there is
+      one, for e2e and verifier records on the app and the flow under test, and copy every workaround
+      they hold into the brief verbatim. Dispatch the verifier with background false, the URL, the e2e
+      criteria each with its setup, those workarounds, and the login steps the repo guide gives. Attach
+      its recordings with pr_edit only when its criteria passed. Skip this when there are no e2e criteria.
+    optional: true
+    when: { available: task }
+    evidence:
+      - call: { tool: poll }
+      - call: { tool: task, when: 'call.args.agent == "verifier"' }
+
+order:
+  - [prefs, bodies, push, open, review-bot]
+  - [open, pr-env]

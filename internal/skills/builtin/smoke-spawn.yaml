@@ -1,0 +1,13 @@
+schema: 2
+skill: smoke-spawn
+version: 1
+when: checking a flow spawn stage live, at the least token cost
+not_for: any real task
+starts: [user]
+
+requires:
+  tools: [bash]
+
+stages:
+  - child: { spawn: { agent: research, run: smoke-child } }
+  - done: { run: { tool: bash, input: { command: "echo spawn landed" } } }

@@ -1,0 +1,63 @@
+#!/bin/sh
+# Installs alux's external tools with Homebrew and pulls its Ollama models; safe to re-run.
+set -e
+root="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
+
+if ! command -v brew >/dev/null 2>&1; then
+	echo "setup: Homebrew is required; install it from https://brew.sh and re-run" >&2
+	exit 1
+fi
+
+need=""
+for tool in mise rg:ripgrep fd ollama jj gh ffmpeg; do
+	cmd="${tool%%:*}"
+	formula="${tool#*:}"
+	command -v "$cmd" >/dev/null 2>&1 || need="$need $formula"
+done
+if [ -n "$need" ]; then
+	echo "setup: installing$need"
+	brew install $need
+fi
+
+(cd "$root" && mise trust -q && mise install)
+
+version() { curl -fsS http://127.0.0.1:11434/api/version 2>/dev/null; }
+wait_ollama() {
+	i=0
+	until version >/dev/null; do
+		i=$((i + 1))
+		[ "$i" -lt 30 ] || { echo "setup: Ollama did not start; run 'ollama serve' and re-run" >&2; exit 1; }
+		sleep 1
+	done
+}
+
+if ! version >/dev/null; then
+	echo "setup: starting Ollama"
+	brew services start ollama
+	wait_ollama
+fi
+min=0.40.9
+have="$(version | sed -n 's/.*"version":"\([0-9.]*\).*/\1/p')"
+if [ "$(printf '%s\n%s\n' "$min" "$have" | sort -V | head -n1)" != "$min" ]; then
+	if ! brew list ollama >/dev/null 2>&1; then
+		echo "setup: Ollama $have is older than $min, which the guardian model needs; update the Ollama app and re-run" >&2
+		exit 1
+	fi
+	echo "setup: Ollama $have is older than $min, which the guardian model needs; upgrading"
+	brew upgrade ollama
+	brew services restart ollama
+	wait_ollama
+fi
+ollama pull d3:2b
+ollama pull embeddinggemma
+
+mkdir -p "$HOME/.local/bin"
+ln -sf "$root/bin/alux" "$HOME/.local/bin/alux"
+case ":$PATH:" in
+*":$HOME/.local/bin:"*) ;;
+*) echo "setup: add ~/.local/bin to your PATH" ;;
+esac
+
+[ -n "$ANTHROPIC_API_KEY" ] || [ -f "$HOME/.config/alux/auth.json" ] ||
+	echo "setup: set ANTHROPIC_API_KEY or put it in ~/.config/alux/auth.json"
+echo "setup: done; run alux"

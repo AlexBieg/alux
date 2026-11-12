@@ -1,0 +1,28 @@
+schema: 2
+skill: e2e-reach
+version: 2
+when: the reach stage of the e2e-verify flow
+not_for: starting on its own; e2e-verify runs it
+
+requires:
+  tools: [browser]
+
+inputs:
+  app_url:
+    type: string
+    description: the origin of the already-running app
+  api_url:
+    type: string
+    description: the API origin the app logs in through
+
+nodes:
+  reach:
+    say: >
+      Open ${app_url} with the browser and confirm the app answers. If it does not,
+      the app is not running: call fail_run rather than starting it yourself. To log
+      in, follow the repo guide's login steps for a test user, with ${api_url} as the API
+      origin when they name one; skip this if the app needs no login. Never guess a password; report a scenario you cannot log
+      in for as FAIL. Dismiss any prompt that covers the page, such as a cookie or
+      notification prompt, before clicking anything else.
+    evidence:
+      - call: { tool: browser, when: 'call.args.action == "open" && call.args.url.startsWith(inputs.app_url)' }

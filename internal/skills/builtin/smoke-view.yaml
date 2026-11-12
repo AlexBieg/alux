@@ -1,0 +1,14 @@
+schema: 2
+skill: smoke-view
+version: 1
+when: the view stage of the smoke flow
+not_for: any real task
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+nodes:
+  view:
+    say: View go.mod with view_range [1, 1], then call finish_stage. Do nothing else.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view"' }

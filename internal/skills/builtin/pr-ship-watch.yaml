@@ -1,0 +1,56 @@
+schema: 2
+skill: pr-ship-watch
+version: 2
+when: the watch stage of the pr-ship flow
+not_for: starting on its own; pr-ship runs it
+
+requires:
+  tools: [pr_edit, pr_detail, poll, str_replace_based_edit_tool]
+  optional_tools: [task]
+
+vars:
+  SHIP: ~/.local/state/alux/skills/pr-ship/${now_utc}
+
+nodes:
+  pr-env:
+    say: >
+      Only when ${SHIP}/e2e.md lists scenarios. Poll the PR's checks until its preview environment
+      is deployed and healthy (the repo guide says how that environment is requested, for example
+      with a label added through pr_edit), and read the app URLs from the deploy bot's comment with
+      pr_detail. Search the record store, when there is one, for e2e and verifier records on
+      the app and flows under test and copy their workarounds into the brief verbatim. Dispatch the
+      verifier with background false, and wait for its report before starting the watch step, with
+      the URL, the scenarios, the workarounds, and the login steps the repo guide gives. For a scenario that names a viewport, tell the
+      verifier to pass that width and height on every browser open and record_start, since one
+      without a size goes back to 1280x800. Attach recordings with pr_edit only for
+      scenarios that passed. A failed scenario is a finding for the watch step, not something to
+      work around.
+    optional: true
+    when: { available: task }
+    evidence:
+      - call: { tool: pr_edit }
+      - call: { tool: task, when: 'call.args.agent == "verifier"' }
+
+  watch:
+    say: >
+      Watch the PR with poll until its checks have settled and, when the repo has bugbot set, the review bot has reported (gh pr checks
+      <n> --repo <slug>, sandbox false, every 60s, while pending, seconds 21600), and write nothing for the round
+      until that poll has stopped and woken you; a poll still running is not a settled round. Each
+      round starts a new poll, and its own poll must stop before the round is written. A poll that
+      timed out is never green and leaves this step open: poll again, or write "round <k>: timed out"
+      and waive the step with that reason. Then read failing checks with pr_detail and the
+      log of each failed run (poll gh run view <id> --log-failed --repo <slug>, sandbox false, background false), and unresolved threads with pr_detail and threads true.
+      Append a round to ${SHIP}/watch.md: "round <k>: green" or "round <k>: <failures and findings>".
+      A failure you can trace to this change: fix it, rerun the prefs pass and bash ${SHIP}/verify.sh on
+      the fix, push with pr_push, reply to each thread you addressed with pr_thread_reply (that one asks
+      the user), and watch again. Stop after round 2 fixes or the first green round. A failure unrelated to the
+      change, or a finding you judge wrong, is not fixed: note why and leave it for the user.
+      Tell the user the PR number and URL, its state (green, or what is left and why), each fix round in
+      a line, the e2e result with recordings if any, and that it stays a draft for them to mark ready.
+    evidence:
+      - poll_stopped: {}
+      - artifact_lines: { path: "${SHIP}/watch.md", pattern: "^round [0-9]+: ", min: 1 }
+      - call: { tool: pr_detail }
+
+order:
+  - [pr-env, watch]

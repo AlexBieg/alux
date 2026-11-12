@@ -1,0 +1,64 @@
+schema: 2
+skill: dev-plan
+version: 2
+when: the plan stage of the dev-cycle flow
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [str_replace_based_edit_tool, bash, ask_user]
+
+inputs:
+  max_rounds:
+    type: int
+    default: 2
+    description: agent review rounds per change before the work escalates to the user
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  plan:
+    say: >
+      Decide the changes, one per PR, in stack order, bottom first. Split on stack and reviewer, never
+      on vendor turnaround, and keep each PR reviewable in one sitting. Give each change an id (at most
+      40 lowercase letters, digits and dashes), a name (the PR title), a task (the coder's whole brief:
+      the goal, the spec sections it needs, its criterion ids and names, an order to write each test
+      criterion's test first and see it fail, and the repo's known traps from the vault and its repo
+      guide), a verify (one shell command, run from the repo root, that proves it), a bookmark (e.g.
+      <ticket>-<slug>), a base (main, or the bookmark of the change below), and repo (the repo's
+      absolute path). Settle the base revset the first change builds on: the repo's main bookmark for
+      fresh work, or the existing branch or bookmark when the goal builds on one, and check it resolves
+      to exactly one commit that is not the root with jj log -r '<revset>'. Write ${RUN}/plan.md with
+      one line per criterion in ${RUN}/acceptance.yaml, "- <criterion id> -> <change id> | <proof>",
+      then "Estimate: <coder runs>, <review runs>, <e2e runs>" counting up to ${max_rounds} send-backs
+      per change.
+      If alux reopened this stage because a coder failed, fix that change's task or verify; a change
+      already done is never redone, so give reworked finished work a new id.
+    evidence:
+      - call: { tool: bash, when: 'call.commands.exists(c, cmd(c, "jj log"))' }
+      - artifact_lines: { path: "${RUN}/plan.md", pattern: "^- [a-z0-9][a-z0-9-]* -> [a-z0-9][a-z0-9-]* \\| (test|e2e|review)\\s*$", min: 1 }
+      - artifact_lines: { path: "${RUN}/plan.md", pattern: "^Estimate: \\S", min: 1 }
+
+  try:
+    say: >
+      Run each change's verify exactly as written, from the repo root, on the plan's base: note @'s
+      change id, jj new on the base revset, run them, then jj edit back to that change id so the
+      user's work is where it was. A verify takes no $(…), backticks, grouping or file redirects, and runs under
+      pipefail, so a gate like `cmd | grep -q PAT` works only where cmd exits 0. Write ${RUN}/base.md
+      with one line per change: "<id>: passes", "<id>: red: <what failed>" when only tests the change
+      will add are missing or failing, or "<id>: broken: <unrelated failure>". For a stacked plan, a
+      later verify failing on what an earlier change adds counts as red. Narrow or fix every broken
+      verify, rerun it and rewrite its line, before finishing; no broken line may remain.
+    evidence:
+      - artifact_lines: { path: "${RUN}/base.md", pattern: "^[a-z0-9][a-z0-9-]*: (passes|red: \\S|broken: \\S)", min: 1 }
+
+  agree:
+    say: >
+      This is a proposal. Show the user the PR split with ask_user, saying what you would merge or cut,
+      and say their decision back in one line. Finish this stage only once they agree, with the base
+      revset and the changes as out; alux then starts the coders one change at a time.
+    evidence:
+      - call: { tool: ask_user }
+
+order:
+  - [plan, try, agree]

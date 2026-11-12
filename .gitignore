@@ -1,0 +1,4 @@
+.tmp
+/alux
+__pycache__/
+.DS_Store

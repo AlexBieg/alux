@@ -1,0 +1,34 @@
+schema: 2
+skill: e2e-drive
+version: 1
+when: the drive stage of the e2e-verify flow, once per scenario
+not_for: starting on its own; e2e-verify runs it
+
+requires:
+  tools: [browser, str_replace_based_edit_tool]
+
+inputs:
+  id: { type: string, description: the scenario's id }
+  name: { type: string, description: the scenario's name }
+  user: { type: string, description: the test user it logs in as }
+  steps: { type: string, description: what to do }
+  expect: { type: string, description: what should be true at the end }
+
+vars:
+  RUN: /tmp/alux-e2e/${now_utc}
+
+nodes:
+  drive:
+    say: >
+      Run scenario ${id}: ${name}, once, as a recording, logged in as ${user}. Steps: ${steps}.
+      Expect: ${expect}. record_start to ${RUN}/${id}.mp4, drive the flow snapshotting
+      before every click or fill and again after anything changes the page, then
+      record_stop with path ${RUN}/${id}.mp4. Judge the expectation from
+      the snapshots and the frames record_stop attaches, rather than assume what
+      the page shows. Write ${RUN}/${id}.md as one line, "PASS: <what you saw>" or
+      "FAIL: <what went wrong>". If the scenario fails, stop the recording, note what you saw
+      and move on; it is reported as FAIL, not worked around.
+    evidence:
+      - call: { tool: browser, when: 'call.args.action == "record_start" && call.args.path == vars.RUN + "/" + inputs.id + ".mp4"' }
+      - call: { tool: browser, when: 'call.args.action == "record_stop" && call.args.path == vars.RUN + "/" + inputs.id + ".mp4"' }
+      - artifact_lines: { path: "${RUN}/${id}.md", pattern: "^(PASS|FAIL): \\S", min: 1 }

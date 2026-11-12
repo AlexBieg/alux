@@ -1,0 +1,50 @@
+schema: 2
+skill: e2e-verify
+version: 5
+when: a change to a running web app needs checking end to end in a browser, with recordings as evidence
+not_for: an app that is not already running, or any check that needs real user data
+starts: [user, model]
+
+requires:
+  tools: [browser, str_replace_based_edit_tool]
+
+inputs:
+  change:
+    type: string
+    description: what changed and what should now be true
+  app_url:
+    type: string
+    default: "http://localhost:3000"
+    description: the origin of the already-running app, local or a PR's review app
+  api_url:
+    type: string
+    default: "http://localhost:8000"
+    description: the API origin the app logs in through, when the repo guide describes a login endpoint there
+  diff:
+    type: string
+    default: "jj diff, the working copy's change"
+    description: where to read the change's diff
+  min_scenarios:
+    type: int
+    default: 2
+    description: the fewest scenarios the plan may list
+
+vars:
+  RUN: /tmp/alux-e2e/${now_utc}
+
+stages:
+  - plan:
+      checklist: e2e-plan
+      out:
+        scenarios:
+          type: array
+          minItems: 1
+          items: { type: object, properties: { id: string, name: string, user: string, steps: string, expect: string } }
+  - reach: { checklist: e2e-reach }
+  - scenarios:
+      foreach: { in: plan.scenarios, as: scenario }
+      stages:
+        - drive:
+            checklist: e2e-drive
+            inputs: { id: "${scenario.id}", name: "${scenario.name}", user: "${scenario.user}", steps: "${scenario.steps}", expect: "${scenario.expect}" }
+  - report: { checklist: e2e-report }

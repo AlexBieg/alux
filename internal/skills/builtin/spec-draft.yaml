@@ -1,0 +1,48 @@
+schema: 2
+skill: spec-draft
+version: 1
+when: the draft stage of the spec flow
+not_for: starting on its own; spec runs it
+
+requires:
+  tools: [vault_search, vault_record_read, grep, str_replace_based_edit_tool]
+
+inputs:
+  goal:
+    type: string
+    description: a ticket key, a URL, or the goal in words
+
+vars:
+  RUN: ~/.local/state/alux/skills/spec/${now_utc}
+
+nodes:
+  context:
+    say: >
+      The goal: ${goal}. Search the vault and the record store for its ticket key and the systems it
+      names, and read the ticket hub in full when one exists. When a source the goal cites cannot be
+      read, ask the user what it says before going on.
+    evidence:
+      - call: { tool: vault_search }
+      - call: { tool: vault_record_read }
+
+  code:
+    say: >
+      Read the code the goal touches: the entry points, the callers of what will change, the tests
+      beside it, and any AGENTS.md or repo guide.
+    evidence:
+      - call: { tool: grep }
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view"', min: 5 }
+
+  spec:
+    say: >
+      Write ${RUN}/spec.md under four headings. "## Goal": what and why, in two or three sentences.
+      "## Product": what a user sees and does, the edge cases, what stays the same. "## Technical":
+      the design, the data or API changes, the risks, citing path:line for every claim about
+      existing code. "## Rejected": each alternative you chose against and why. Lead with any
+      limitation, keep each section short enough to read in two minutes, and leave out anything the
+      goal does not need. Critics will see only this file and the repo, so put every assumption in it.
+    evidence:
+      - artifact_lines: { path: "${RUN}/spec.md", pattern: "^## (Goal|Product|Technical|Rejected)\\s*$", min: 4 }
+
+order:
+  - [context, code, spec]

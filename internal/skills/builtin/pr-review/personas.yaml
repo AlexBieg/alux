@@ -1,0 +1,118 @@
+# Reviewer personas for the pr-review skill. Each one becomes the lens in a task brief to the review agent.
+# Selection: every always persona, then every persona whose paths match a changed file, in file order,
+# up to cap. unless_only skips a persona when every changed file matches those globs.
+# The main agent may add personas into open slots with a reason; it never drops a chosen one.
+
+cap: 4
+
+personas:
+  - id: test-skeptic
+    name: Test skeptic
+    always: true
+    lens: >
+      Do the tests assert real behaviour? Could each one fail if the code were wrong? Is the risky
+      branch covered, and is anything new left untested that should be? Flag tests that only lift
+      coverage, mocks that test the mock, and assertions on implementation detail.
+    stays_out: production code style and design
+
+  - id: bug-finder
+    name: Bug finder
+    always: true
+    unless_only: ["**/*.md", "**/*.toml", "**/*.yaml", "**/*.yml", "**/*.json", "docs/**"]
+    lens: >
+      Try to break it. Walk the inputs and states the author did not: empty, None, duplicates,
+      boundaries, concurrent calls, partial failure, a retry after half the work ran. Name the input
+      that breaks it and what happens.
+    stays_out: style, naming and test quality
+
+  - id: database-engineer
+    name: Database engineer
+    paths: ["**/migrations/**", "**/models/**"]
+    lens: >
+      Locks taken on large tables and for how long; NOT VALID constraints with a separate validate;
+      indexes for the queries the change adds; reversibility of the
+      downgrade; backfill safety and batching; nullability against what the data really holds.
+    stays_out: query performance in application code
+
+  - id: auth-access
+    name: Auth and access reviewer
+    paths: ["**/controllers/**", "**/policies/**", "**/identity/**"]
+    lens: >
+      Who can call this, and is that checked at the object level, not just the route? Look for IDOR,
+      role leaks, one user or tenant reaching another's records, and fields returned to a user who
+      should not see them.
+    stays_out: performance and general input-handling security
+
+  - id: query-performance
+    name: Query performance analyst
+    paths: ["**/repositories/**", "**/controllers/**", "**/services/**"]
+    lens: >
+      N+1s, unbounded queries, missing eager loads, pagination on list endpoints, work done per row in
+      a loop, and the cost of anything on a hot path.
+    stays_out: auth and UX
+
+  - id: api-contract
+    name: API contract keeper
+    paths: ["**/schemas/**", "**/controllers/**", "**/openapi*.json"]
+    lens: >
+      Breaking changes for existing clients, including web and mobile; renamed or removed fields;
+      error shapes; drift between backend schemas and the generated frontend types.
+    stays_out: internal implementation
+
+  - id: distributed-systems
+    name: Distributed systems engineer
+    paths: ["**/workflows/**", "**/tasks/**"]
+    lens: >
+      Idempotency on retry; determinism in workflow-engine code; timeouts and retry policies;
+      duplicate sends; ordering; what a run in flight does across a deploy.
+    stays_out: single-request logic
+
+  - id: integration-skeptic
+    name: Integration skeptic
+    paths: ["**/clients/**", "**/webhooks/**", "**/integrations/**"]
+    lens: >
+      Third-party failure and timeout handling, rate limits, sandbox versus production config,
+      webhook signature checks, and retries that double-charge or double-send.
+    stays_out: internal code style
+
+  - id: frontend-engineer
+    name: Frontend engineer
+    paths: ["web/**", "mobile/**", "native/**"]
+    lens: >
+      UX: empty, loading and error states, copy, dead ends, whether the user can tell what just
+      happened. Accessibility: labels, focus order, keyboard paths. Components: the design system's
+      built-in props and defaults over reach-ins to private markup. State: stale cache, races, double submits,
+      effects that refire, optimistic updates that never roll back.
+    stays_out: backend logic
+
+  - id: privacy-compliance
+    name: Privacy and compliance officer
+    paths: ["**/privacy/**", "**/pii/**", "**/sanitiz*/**"]
+    lens: >
+      Personal or sensitive data in logs, analytics events, error messages, URLs and third-party
+      payloads; collecting only the data needed; retention; an audit trail for access to personal records.
+    stays_out: general security
+
+  - id: security-engineer
+    name: Security engineer
+    paths: ["**/*upload*", "**/*crypto*", "**/*token*"]
+    lens: >
+      Injection, SSRF, unsafe deserialisation, path traversal, secrets in code or config, missing
+      signature checks, unsafe templating.
+    stays_out: authorisation logic, which the auth reviewer owns
+
+  - id: operability-release
+    name: Operability and release reviewer
+    paths: ["**/migrations/**", "**/Dockerfile*", "terraform/**", ".github/**"]
+    lens: >
+      Is old code safe against the new schema and the new code against the old, deploy order,
+      rollback path, feature-flag rollout and kill switch; logging, metrics and alerts, and
+      whether on-call could understand the failure.
+    stays_out: correctness of the logic
+
+  - id: maintainer
+    name: Maintainer
+    lens: >
+      Naming, whether each abstraction is earned, dead code, duplication of something that already
+      exists, and whether it would make sense to a reader in six months.
+    stays_out: bugs other reviewers own

@@ -1,0 +1,21 @@
+schema: 2
+skill: pr-review-e2e-verify
+version: 2
+when: the e2e-verify stage of the pr-review flow
+not_for: starting on its own; pr-review runs it
+
+requires:
+  tools: [task]
+
+vars:
+  RUN: ~/.local/state/alux/skills/pr-review/${now_utc}
+
+nodes:
+  verify:
+    say: >
+      Dispatch the verifier in the background with the app URLs from the "PR env: ready" or "PR env: stale"
+      line your poll stopped on (for stale, tell it which commit is deployed and that head is newer), the scenarios in ${RUN}/e2e.md, made-up test data only, and the login steps the
+      repo guide gives. Its failed checks become lines of self.md in the next stage. If the wait stopped
+      on none or was waived, waive this step with that reason.
+    evidence:
+      - call: { tool: task, when: 'call.args.agent == "verifier"' }

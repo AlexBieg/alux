@@ -1,0 +1,29 @@
+schema: 2
+skill: coder-task
+version: 2
+when: a coder is handed one planned change with a command that proves it
+not_for: anything without a verify command, or work outside the coder's own workspace
+starts: [model]
+
+requires:
+  tools: [bash, str_replace_based_edit_tool]
+
+inputs:
+  task:
+    type: string
+    description: the whole brief for the change
+  verify:
+    type: string
+    description: the shell command that proves the change, run in the workspace
+
+stages:
+  - work: { checklist: coder-work, out: { outcome: [changed, nothing_to_do], why: string } }
+  - verify:
+      run: { tool: bash, input: { command: "${verify}", seconds: 600 } }
+      on_fail: work
+      max: 3
+  # Proves the work: an empty change fails here, since work's evidence also counts a bare view.
+  - described:
+      run: { tool: bash, input: { command: "jj log -r @ --no-graph -T 'if(empty, \"\", description)' | grep -q ." } }
+      when: { field: work.outcome, equals: changed }
+      on_fail: work

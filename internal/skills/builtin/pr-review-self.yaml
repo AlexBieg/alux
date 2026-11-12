@@ -1,0 +1,23 @@
+schema: 2
+skill: pr-review-self
+version: 1
+when: the self stage of the pr-review flow
+not_for: starting on its own; pr-review runs it
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+vars:
+  RUN: ~/.local/state/alux/skills/pr-review/${now_utc}
+
+nodes:
+  self:
+    say: >
+      Once every reviewer and the verifier, if dispatched, have reported, write ${RUN}/self.md with
+      each failed e2e check, one per line as "- e2e | <blocking or non-blocking> | <class> | path:line |
+      problem: ... | impact: ... | evidence: <its evidence file> | fix: <the change, at path:line>", or
+      the one line "- none | no findings". Your own findings stay in own.md. alux then collects every reviewer's submitted findings itself; if it names a persona
+      with no submission, it reopens this stage: wait for that reviewer or dispatch it again, then
+      finish the stage again and alux collects again.
+    evidence:
+      - artifact_lines: { path: "${RUN}/self.md", pattern: "^- (e2e|none) \\|", min: 1 }

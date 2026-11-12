@@ -1,0 +1,112 @@
+schema: 2
+skill: record-cleanup
+version: 3
+when: the record store's slot conflicts, open unfiled entries or unjudged look-alike record pairs need working down, or ended sessions need gisting before their transcripts are pruned
+not_for: migrating vault notes, or writing new knowledge that did not come from a conflict, an unfiled entry, a look-alike pair or a session transcript
+starts: [user, model]
+
+requires:
+  tools: [vault_record_read, vault_record]
+
+nodes:
+  conflicts:
+    say: >
+      List the subjects with overlapping current states: vault_record_read op conflicts.
+      Subjects holding phi (sensitive personal data) are counted, not named; leave them and say how many there were.
+    evidence:
+      - call: { tool: vault_record_read, when: 'call.args.op == "conflicts"' }
+
+  unfiled:
+    say: List the open unfiled entries with vault_record_read op unfiled, limit 50.
+    evidence:
+      - call: { tool: vault_record_read, when: 'call.args.op == "unfiled"' }
+
+  investigate:
+    say: >
+      Before changing anything, read each state in a conflict, and each record or entity an unfiled
+      entry names, with op get or op about. Act only when the records themselves settle it. If
+      nothing is listed, there is nothing to read; this step is then skipped.
+    optional: true
+    evidence:
+      - call: { tool: vault_record_read, when: 'call.args.op == "get"' }
+
+  fix-conflicts:
+    say: >
+      For each conflict you are sure of: when one state is plainly a newer reading of the same
+      thing, add a state that supersedes the older ones and holds a slot; when a state just lacks a
+      slot and no other current state fills it, use op slot. Two states that disagree with nothing
+      to say which is right are left alone and reported.
+    optional: true
+    evidence:
+      - call: { tool: vault_record, when: 'call.args.op == "add"' }
+
+  resolve-unfiled:
+    say: >
+      For each unfiled entry you are sure of: file it as a record and resolve it outcome filed with
+      that record; resolve it schema_changed when the store can now take what it asked and you did
+      that; resolve it discarded only when it plainly should not be stored (a duplicate of an
+      existing record, a live secret, compensation or review content). Resolutions are final, so
+      leave anything uncertain open and report it.
+    optional: true
+    evidence:
+      - call: { tool: vault_record, when: 'call.args.op == "resolve"' }
+
+  pairs:
+    say: >
+      List look-alike record pairs with vault_record_read op pairs, limit 20. If the op is
+      refused as unknown, this harness predates it: skip the pair steps and say so in the report.
+    optional: true
+    evidence:
+      - call: { tool: vault_record_read, when: 'call.args.op == "pairs"' }
+
+  judge-pairs:
+    say: >
+      For each pair, read both records with op get before judging. Same fact and same kind: add one
+      record superseding both, then judge it same. Same fact in different kinds, or records that
+      plainly belong together: link them (see_also, or a sharper role when the records say so), then
+      judge it related. Alike only in wording or template, such as two tickets' states or two
+      digests: judge it distinct. When you cannot tell, judge nothing and list the pair.
+    optional: true
+    evidence:
+      - call: { tool: vault_record, when: 'call.args.op == "judge"' }
+
+  ungisted:
+    say: >
+      List the ended sessions that wrote records and have no gist yet: vault_record_read op
+      ungisted. They are listed oldest first because the oldest transcript is the next to be pruned,
+      and once it is gone nothing can be gisted from it.
+    evidence:
+      - call: { tool: vault_record_read, when: 'call.args.op == "ungisted"' }
+
+  gist-sessions:
+    say: >
+      For each listed session, oldest first and at most 5 this run, read its transcript (jsonl, one
+      event per line: kind user is the user's prompt, text the agent's words, tool a call with name,
+      input and output) and write one vault_record op episode with the session id, a one-line
+      title, a gist and a sensitivity. goal and outcome come from what the user asked and the
+      final text; outcome is one or two sentences on where the work ended, leaving the code changes
+      to artifacts and the record ids to the records the episode lists. Leave out anything jj or gh
+      can show, such as whether a change was committed or pushed and whether builds or tests passed.
+      turn_points are where the user changed direction. surprises and artifacts keep
+      identifiers, paths, numbers and error strings verbatim. tried_and_dropped names each thing
+      abandoned with why. sensitivity is phi when the transcript holds any sensitive personal
+      data, such as health or patient details, and then the gist must still not quote that detail. If nothing is listed, this step is
+      skipped.
+    optional: true
+    evidence:
+      - call: { tool: vault_record, when: 'call.args.op == "episode"' }
+
+  verify:
+    say: >
+      Read op conflicts and op unfiled again, and op pairs if you judged any, to confirm what you
+      fixed is gone. Then report each fix with the ids it touched, then "Left for you:" and each
+      item you did not fix and why.
+    evidence:
+      - call: { tool: vault_record_read, when: 'call.args.op == "conflicts"', min: 2 }
+      - call: { tool: vault_record_read, when: 'call.args.op == "unfiled"', min: 2 }
+
+order:
+  - [conflicts, investigate, fix-conflicts, verify]
+  - [unfiled, investigate, resolve-unfiled, verify]
+  - [pairs, judge-pairs, verify]
+  - [ungisted, gist-sessions, verify]

@@ -1,0 +1,50 @@
+schema: 2
+skill: change-review
+version: 2
+when: one jj change needs reviewing against a written spec before it ships
+not_for: a GitHub PR (use pr-review), or a change with no spec to check it against
+starts: [model]
+
+requires:
+  tools: [bash, str_replace_based_edit_tool]
+
+inputs:
+  change:
+    type: string
+    description: the jj change id to review
+  repo:
+    type: string
+    description: the absolute path of the jj repo holding the change
+  spec:
+    type: string
+    description: the path of the spec the change must meet
+  criteria:
+    type: string
+    description: the path of the acceptance criteria; check only those naming this change
+
+nodes:
+  diff:
+    say: >
+      Read the whole diff (e.g. jj diff --ignore-working-copy -r ${change} -R ${repo}), then view
+      the files it touches where the hunks alone do not show the behaviour.
+    evidence:
+      - call: { tool: bash, when: 'call.commands.exists(c, cmd(c, "jj diff") || cmd(c, "jj show") || (cmd(c, "jj log") && (hasFlag(c, "-p") || hasFlag(c, "--patch"))))' }
+
+  spec:
+    say: Read ${spec} and ${criteria} in full.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view" && call.args.path == inputs.spec' }
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view" && call.args.path == inputs.criteria' }
+
+  report:
+    say: >
+      Check the change against the spec, each criterion for it, and for bugs it introduces. Read the
+      tests it adds and say whether they assert the behaviour. End with a report of one line per
+      finding, "[blocking] path:line: problem -> fix" or "[non-blocking] path:line: problem -> fix",
+      or the single line "clean". Blocking means a criterion is unmet or the change is wrong.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view" && call.args.path != inputs.spec && call.args.path != inputs.criteria', min: 3 }
+
+order:
+  - [diff, report]
+  - [spec, report]

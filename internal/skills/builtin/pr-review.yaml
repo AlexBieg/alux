@@ -1,0 +1,130 @@
+schema: 2
+skill: pr-review
+version: 12
+when: the user wants a pull request reviewed for their eyes only
+not_for: posting, commenting, approving or drafting anything on GitHub; the review stays local
+starts: [user, model]
+
+requires:
+  tools: [bash, pr_detail, pr_diff, pr_findings, task, poll, str_replace_based_edit_tool, review_load]
+  optional_tools: [vault_search]
+
+inputs:
+  pr:
+    type: string
+    description: the pull request as owner/name#number
+  reviewers:
+    type: string
+    default: test-skeptic, bug-finder
+    description: persona ids chosen from the changed files; /prs r fills it
+  reviewer_count:
+    type: int
+    default: 2
+    description: how many personas reviewers lists
+  open_slots:
+    type: int
+    default: 4
+    description: how many personas the agent may add beyond reviewers
+  rereview:
+    type: bool
+    default: false
+    description: a review is stored for an older head of this PR; /prs r sets it
+  prior_head:
+    type: string
+    default: ""
+    description: the head commit the stored review was checked against
+  prior:
+    type: string
+    default: ""
+    description: path of the stored review's JSON
+
+vars:
+  RUN: ~/.local/state/alux/skills/pr-review/${now_utc}
+
+stages:
+  - target:
+      run:
+        tool: bash
+        input: { command: "echo ${pr}" }
+        capture:
+          repo: { pattern: "(\\S+/[^\\s#]+)#[0-9]+" }
+          number: { pattern: "\\S+/[^\\s#]+#([0-9]+)", type: int }
+  - pr-detail:
+      run:
+        tool: pr_detail
+        input: { repo: "${target.repo}", number: "${target.number}" }
+        capture:
+          env: { pattern: "(?m)^#### PR environment: (none|deploying|failed|ready|unknown|not configured)" }
+  - pr-diff:
+      run:
+        tool: pr_diff
+        input: { repo: "${target.repo}", number: "${target.number}" }
+        capture:
+          diff: { pattern: "Whole diff: (\\S+)" }
+  - since-diff:
+      run: { tool: pr_diff, input: { repo: "${target.repo}", number: "${target.number}", since: "${prior_head}" } }
+      when: { input: rereview, equals: true }
+  - read: { checklist: pr-review-read }
+  - e2e-judge:
+      checklist: pr-review-e2e-judge
+      inputs: { env: "${pr-detail.env}" }
+      out: { testable: [yes, no], why: string }
+  - work:
+      checklist: pr-review-work
+      inputs: { e2e: "${e2e-judge.testable}" }
+  - e2e-verify:
+      checklist: pr-review-e2e-verify
+      when: { field: e2e-judge.testable, equals: "yes" }
+  - self: { checklist: pr-review-self }
+  - findings:
+      run: { tool: pr_findings, input: { repo: "${target.repo}", number: "${target.number}", areas: "${RUN}/areas.md" } }
+      on_fail: self
+      max: 3
+  - triage:
+      run:
+        tool: task
+        input:
+          agent: research
+          background: false
+          name: pr review triage
+          objective: >
+            Triage the findings several reviewers raised on ${pr} before they reach the user: check each
+            against the code, merge duplicates, group findings that one change would fix, and say
+            which are wrong.
+          context: "${findings.text}\n\nThe main agent's own findings, in the same form: ${RUN}/own.md\nThe e2e findings, in the same form: ${RUN}/self.md\nOn a re-review only, the stored review's findings: ${RUN}/prior.md, each line the finding prior-<index>\nAlready raised on the PR: ${RUN}/existing.md\nWhole diff: ${pr-diff.diff}"
+          scope: >
+            Read own.md, self.md, prior.md when it exists, and the diff file with view, then the code each finding points at
+            in this checkout. Reviewers' path:line anchors were checked against the PR's head when
+            they were submitted; judge whether the finding is right, not whether its line exists. The checkout may not be at the PR's head, so the diff is the truth about
+            the new code.
+          boundaries: >
+            Merge findings that name the same defect, keeping every source persona. Also group
+            findings that share a root cause or that one change would fix, even when they sit in
+            different files, describe different symptoms or carry different classes: compare their
+            fix fields and the code, not their wording. A group is one finding with every symptom and
+            path:line listed under it, its fix, the path:line the fix goes at, and the most serious
+            severity among its members; a member never disappears into the group. Findings that
+            only touch the same line but need different fixes stay separate. Mark a finding
+            discarded only when the code shows it is wrong, and quote the lines that show it. Mark it
+            open when reviewers contradict each other or reading cannot settle it; never decide by
+            majority. Keep the rest. Drop nothing silently: every finding listed appears in the
+            report. A finding from prior-<n> was raised at an older head and its path:line is from
+            then: keep it only when the current code still shows the defect, giving its path:line in
+            the new code; mark it fixed, quoting the lines, when the code no longer has it. Merge a
+            new finding into the prior one it repeats, keeping the prior-<n> source, and never merge
+            two prior findings into one. Mark a finding covered when a line of the already-raised file
+            names the same defect, whoever raised it and whether or not it is resolved, quoting that
+            line; a finding that only touches the same code but names a different defect is not
+            covered.
+          done: >
+            Every finding listed in the context, own.md, self.md and prior.md has a verdict of kept, merged, grouped, open, fixed,
+            covered or discarded, and every pair of kept findings whose fix fields name the same change is
+            grouped or has a reason it is not.
+          report: >
+            One line per finding, merged or grouped: verdict, source personas, severity, class,
+            path:line, problem, impact, evidence, fix and the path:line it goes at, and one line of
+            reason; fill any part a reviewer left as "-" from the code you read, and for a kept
+            finding never leave one empty; with the quoted
+            lines for each discarded, fixed or covered one. Under each group, one indented line per member
+            with its persona, path:line and symptom.
+  - write: { checklist: pr-review-write }

@@ -1,0 +1,47 @@
+schema: 2
+skill: spec-revise
+version: 1
+when: the revise stage of the spec flow
+not_for: starting on its own; spec runs it
+
+requires:
+  tools: [str_replace_based_edit_tool, ask_user, vault_record, vault_record_read]
+
+vars:
+  RUN: ~/.local/state/alux/skills/spec/${now_utc}
+
+nodes:
+  fold:
+    say: >
+      Apply every fold from the triage report alux just returned to ${RUN}/spec.md with the editor,
+      one edit per fold. Do not fold an ask or an open item yourself.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "str_replace" && call.args.path.endsWith("spec.md")' }
+
+  ask:
+    say: >
+      Put every ask and open item to the user with ask_user in one series, each with the critic
+      personas behind it, its options and the triage recommendation. Say each answer back in one
+      line, then write it into the spec section it changes. When triage left no ask or open item,
+      waive this step saying so.
+    evidence:
+      - call: { tool: ask_user }
+
+  decisions:
+    say: >
+      Add a "## Decided" section to ${RUN}/spec.md listing each answer as "- <question> -> <answer>",
+      and store each one with vault_record as a decision, under the ticket's entity when there is
+      one. Search the record store first so you supersede rather than duplicate.
+    evidence:
+      - artifact_lines: { path: "${RUN}/spec.md", pattern: "^## Decided\\s*$", min: 1 }
+      - call: { tool: vault_record, when: 'call.args.op == "add"' }
+
+  report:
+    say: >
+      Tell the user where the spec is, how many critiques each persona raised, how many triage
+      folded, asked, left open and discarded, and list each discard with its reason in one line.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view" && call.args.path.endsWith("spec.md")' }
+
+order:
+  - [fold, ask, decisions, report]

@@ -1,0 +1,81 @@
+schema: 2
+skill: dev-cycle
+version: 12
+when: the user hands over a ticket or goal to take from research through a plan, coders and reviews to watched draft PRs
+not_for: a one-file fix you could just make, reviewing someone else's PR, or shipping hand-written code (use pr-ship)
+starts: [user]
+
+requires:
+  tools: [vault_search, vault_record_read, vault_record, grep, str_replace_based_edit_tool, ask_user, bash, land_run, pr_push, pr_create, poll]
+  optional_tools: [task, web_search, "${knowledge_tool}", pr_edit, pr_detail, pr_thread_reply, pr_review_bot_run]
+
+inputs:
+  goal:
+    type: string
+    description: a ticket key, a URL, or the goal in words
+  repo:
+    type: string
+    default: "the jj repo holding the session's working directory (jj root)"
+    description: the jj repo the work happens in
+  max_rounds:
+    type: int
+    default: 2
+    description: agent review rounds per change before the work escalates to the user
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+stages:
+  - intake: { checklist: dev-intake }
+  - spec: { checklist: dev-spec }
+  - plan:
+      checklist: dev-plan
+      out:
+        base: string
+        changes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              id: string
+              name: string
+              task: string
+              verify: { type: string, format: command }
+              bookmark: string
+              base: string
+              repo: string
+  - base: { checklist: dev-base, inputs: { base: "${plan.base}" } }
+  - each:
+      foreach: { in: plan.changes, as: change }
+      stages:
+        - code:
+            spawn: { agent: coder, run: coder-task, inputs: { task: "${change.task}", verify: "${change.verify}" } }
+            on_fail: plan
+            max: 2
+        - land: { checklist: dev-land, inputs: { id: "${change.id}", name: "${change.name}", bookmark: "${change.bookmark}" } }
+        - rounds:
+            repeat: { max: "${max_rounds}", until: { field: verdict.kind, equals: clean } }
+            stages:
+              - review:
+                  spawn:
+                    agent: research
+                    run: change-review
+                    inputs: { change: "${change.bookmark}", repo: "${change.repo}", spec: "${RUN}/spec.md", criteria: "${RUN}/acceptance.yaml" }
+                    report: "${RUN}/review-${change.id}-${rounds.round}.md"
+              - verdict:
+                  checklist: dev-verdict
+                  inputs: { id: "${change.id}", bookmark: "${change.bookmark}", task: "${change.task}", round: "${rounds.round}" }
+                  out: { kind: [clean, fix], task: string }
+              - fix:
+                  spawn: { agent: coder, run: coder-task, change: "${change.bookmark}", inputs: { task: "${verdict.task}", verify: "${change.verify}" } }
+                  when: { field: verdict.kind, equals: fix }
+  - ship: { checklist: dev-ship }
+  - watch:
+      repeat: { max: 2, until: { field: check.kind, equals: green } }
+      stages:
+        - check: { checklist: dev-watch, out: { kind: [green, fix], change: string, task: string, verify: string } }
+        - fix:
+            spawn: { agent: coder, run: coder-task, change: "${check.change}", inputs: { task: "${check.task}", verify: "${check.verify}" } }
+            when: { field: check.kind, equals: fix }
+        - repush: { checklist: dev-repush, when: { field: check.kind, equals: fix } }

@@ -1,0 +1,62 @@
+schema: 2
+skill: research-digest
+version: 1
+when: a weekly digest of new work on harness engineering and agentic coding workflows is due
+not_for: answering one research question (use deep-research), or any topic outside agent harnesses and workflows
+starts: [user, model]
+
+requires:
+  tools: [web_search, web_fetch, glob]
+
+inputs:
+  days:
+    type: int
+    default: 7
+    description: how far back counts as new
+
+vars:
+  PAST: ~/.local/state/alux/jobs/out/research-digest
+  RUN: ~/.local/state/alux/jobs/out/research-digest/${now_utc}
+
+nodes:
+  prior:
+    say: >
+      Glob ${PAST} for earlier digest.md files and view the latest two, so
+      nothing they covered is reported again. On the first run there are none.
+    optional: true
+    evidence:
+      - call: { tool: glob }
+
+  sweep:
+    say: >
+      Search for work published in the last ${days} days on: agent loop and
+      harness design, tool design and tool-use protocols, sandboxing and
+      permissions, context management and compaction, subagents and
+      orchestration, evals for agents, and agentic coding workflows. Cover
+      arXiv, the Anthropic, OpenAI and Google DeepMind engineering blogs, and
+      practitioner blogs and release notes of coding-agent tools. One search
+      per area at least.
+    evidence:
+      - call: { tool: web_search, min: 7, distinct: query }
+
+  read:
+    say: >
+      Read the pages behind the most promising results, not their snippets.
+      Drop anything older than ${days} days or already in an earlier digest.
+    evidence:
+      - call: { tool: web_fetch, min: 6, distinct: domain }
+      - fetches_opened: { min: 6 }
+
+  digest:
+    say: >
+      Write ${RUN}/digest.md: a three-line "This week" summary, then one
+      section per item with its title, date, link, what it claims in two or
+      three sentences, and one line on what it would change about how an
+      agent harness is built. Put the items most worth acting on first. End
+      with "Skipped" listing what you read and left out, with why. Cite every
+      claim with a URL you fetched.
+    evidence:
+      - citations_fetched: { path: "${RUN}/digest.md" }
+
+order:
+  - [prior, sweep, read, digest]

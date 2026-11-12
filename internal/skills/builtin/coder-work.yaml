@@ -1,0 +1,24 @@
+schema: 2
+skill: coder-work
+version: 2
+when: the work stage of the coder-task flow
+not_for: starting on its own; coder-task runs it
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+inputs:
+  task:
+    type: string
+    description: the whole brief for the change
+
+nodes:
+  work:
+    say: >
+      Do this task in your workspace: ${task}
+      Write each test the brief names first and see it fail before making it pass. When you finish this
+      stage, alux runs the verify command; when it fails, alux reopens this stage, so fix the cause with
+      another edit and finish it again. If the change is already in place, finish with outcome nothing_to_do.
+      A view satisfies this step; if nothing needs changing, finish nothing_to_do without editing.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool }

@@ -1,0 +1,31 @@
+schema: 2
+skill: dev-watch
+version: 2
+when: the check stage of the dev-cycle flow's watch, once per round
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [poll, str_replace_based_edit_tool]
+  optional_tools: [pr_detail]
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  watch:
+    say: >
+      Watch every PR with a new poll until its checks have settled and, when the repo has bugbot set, the review bot has reported (gh pr checks
+      <n> --repo <slug>, sandbox false, every 60s, while pending, seconds 21600), and write nothing until that poll
+      has stopped and woken you. A poll that timed out is never green and leaves this step
+      open: poll again, or waive it with that reason. Read failing checks and the
+      log of each failed run (poll gh run view <id> --log-failed --repo <slug>, sandbox false, background false), and unresolved threads with pr_detail.
+      Append this round's outcome to ${RUN}/watch.md with the editor. Finish the stage with kind green,
+      or kind fix with change (the failing PR's change id from ${RUN}/changes.md), verify (that change's
+      verify) and a task naming each failure or thread to fix; give "" for each of those on green. A
+      failure unrelated to the change, or a finding you judge wrong, is not fixed: note why in watch.md
+      and leave it for the user. On green, tell the user each PR's number and URL, its state, each
+      review and fix round in a line, the e2e result with recordings if any, and that every PR stays a
+      draft for them to mark ready.
+    evidence:
+      - poll_stopped: {}
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command != "view" && call.args.path.endsWith("/watch.md")' }

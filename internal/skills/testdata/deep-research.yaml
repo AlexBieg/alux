@@ -1,0 +1,89 @@
+schema: 2
+skill: deep-research
+version: 1
+when: a question needs more than one search and a snippet answer
+not_for: facts only an internal knowledge tool holds, or any session after a PHI vault read
+starts: [user, model]
+
+requires:
+  tools: [vault_search, web_search, web_fetch]
+  optional_tools: [mcp__glean__search, vault_note]
+
+inputs:
+  question:
+    type: string
+    description: what to research
+  hops:
+    type: int
+    default: 2
+    description: follow-up rounds on adjacent leads
+  leads_per_hop:
+    type: int
+    default: 3
+
+vars:
+  RUN: ~/.local/state/alux/skills/deep-research/${now_utc}
+
+nodes:
+  scope:
+    say: Break ${question} into sub-questions in ${RUN}/scope.md, one "Q:" line each.
+    evidence:
+      - artifact_lines: { path: "${RUN}/scope.md", pattern: "^Q: ", min: 3 }
+
+  vault:
+    say: Search the vault before the web.
+    optional: true
+    evidence:
+      - call: { tool: vault_search }
+
+  glean:
+    say: Search the internal knowledge tool for internal context.
+    optional: true
+    when: { available: mcp__glean__search }
+    evidence:
+      - call: { tool: mcp__glean__search }
+
+  sweep:
+    say: Run at least one web search per sub-question.
+    evidence:
+      - call: { tool: web_search, min: 3, distinct: query }
+
+  read:
+    say: Read pages, not snippets. Prefer primary sources.
+    evidence:
+      - call: { tool: web_fetch, min: 4, distinct: domain }
+      - fetches_opened: { min: 4 }
+
+  leads:
+    say: >
+      From what you read, append adjacent leads to ${RUN}/leads.md as
+      "- <term> | <source url> | <why it matters>". Leads are things the
+      sources raised that the question did not ask: a named alternative, a
+      cited prior work, a caveat, a related system. Write <term> as the
+      shortest name the source page itself uses, and put any qualifier in
+      <why it matters>. Then pursue each one: search for it by that name and
+      read a page about it on a domain you had not used yet. If the search
+      finds nothing worth reading, keep the lead and append
+      " | dead: <what you searched>" rather than swapping in another.
+    loop: { times: "${hops}" }
+    evidence:
+      - leads_followed: { path: "${RUN}/leads.md", min: "${leads_per_hop}", not_in_input: question }
+
+  synthesis:
+    say: >
+      Write ${RUN}/report.md answering the question. Work in adjacent findings
+      where they bear on the answer; leave out the ones that don't.
+      Cite every claim with a URL.
+    evidence:
+      - citations_fetched: { path: "${RUN}/report.md" }
+
+  file:
+    say: File durable findings with vault_note.
+    optional: true
+    when: { available: vault_note }
+    evidence:
+      - call: { tool: vault_note }
+
+order:
+  - [scope, vault, sweep, read, leads, synthesis, file]
+  - [vault, glean, sweep]

@@ -1,0 +1,86 @@
+schema: 2
+skill: pr-review-work
+version: 3
+when: the work stage of the pr-review flow
+not_for: starting on its own; pr-review runs it
+# own comes before wait so the env deploys while the model reviews: a poll started before own.md is written does not count.
+
+requires:
+  tools: [task, poll, str_replace_based_edit_tool]
+
+inputs:
+  pr:
+    type: string
+    description: the pull request as owner/name#number
+  reviewers:
+    type: string
+    default: test-skeptic, bug-finder
+    description: persona ids chosen from the changed files
+  reviewer_count:
+    type: int
+    default: 2
+    description: how many personas reviewers lists
+  open_slots:
+    type: int
+    default: 4
+    description: how many personas the agent may add beyond reviewers
+  e2e:
+    type: string
+    description: yes when the e2e-judge stage found the change testable in the browser
+
+vars:
+  RUN: ~/.local/state/alux/skills/pr-review/${now_utc}
+  PERSONAS: ~/.config/alux/skills/pr-review/personas.yaml
+  PRENV: ~/.config/alux/skills/pr-review/pr-env.sh
+
+nodes:
+  plan:
+    say: >
+      Read ${PERSONAS}. alux chose these reviewers from the changed files: ${reviewers}. Write
+      ${RUN}/areas.md with one line per reviewer you will dispatch, as
+      "- <persona id> | <files to focus on> | <what to look for in this PR>", one for every persona
+      chosen. You may add up to ${open_slots} more from the file when the diff needs a lens its paths
+      missed, such as an auth check inside a service or personal data reaching a log line; end each added line
+      with "| added: <reason>". Never drop a chosen persona. Whatever no persona covers, you review
+      yourself.
+    evidence:
+      - artifact_lines: { path: "${RUN}/areas.md", pattern: "^- [a-z][a-z0-9-]* \\|", min: "${reviewer_count}" }
+
+  dispatch:
+    say: >
+      Dispatch one review agent per line of areas.md, all in one reply. Give each one ${pr}, the
+      persona's name, lens and stays_out as written in ${PERSONAS}, its focus files and what to look
+      for, that its review is for the user only, and that it submits its findings with submit_findings
+      under its persona id, which checks every anchor against the PR at its head.
+    evidence:
+      - call: { tool: task, when: 'call.args.agent == "review"', min: "${reviewer_count}" }
+
+  own:
+    say: >
+      While the reviewers run, review what no persona covers yourself: read the diff and the code it
+      touches. Write ${RUN}/own.md with the editor at that full path, one finding per line as
+      "- self | <blocking or non-blocking> | <class> | path:line | problem: ... | impact: ... |
+      evidence: ... | fix: <the change, at path:line>", or the one line "- none | no findings". Do not
+      open own.md again once the wait has started.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view"', min: 3 }
+      - artifact_lines: { path: "${RUN}/own.md", pattern: "^- (self \\| (non-)?blocking \\| [^|]+\\| \\S+:[0-9]+ \\||none \\|)", min: 1 }
+
+  wait:
+    say: >
+      Only after own.md is written, wait for the PR environment: poll
+      'if [ -f ${PRENV} ]; then bash ${PRENV} <repo> <number>; else echo "PR env: none, no pr-env.sh"; fi'
+      for ${pr}, sandbox false, every 60, until "PR env: (ready|stale|failed|none)", seconds 3600. A poll started before own.md
+      was written does not count. Never request or deploy an environment yourself. If it stops on
+      "PR env: none, no pr-env.sh", there is no environment: waive this step with that reason without
+      asking. If it stops on stale,
+      the env is up but deployed from an older commit than head: quote that line and ask the user whether
+      to test the older deploy or skip e2e. If it stops on anything else but ready, ask the user whether to
+      keep waiting. If they say skip or stop, waive this step with that reason.
+    when: { input: e2e, equals: "yes" }
+    evidence:
+      - call: { tool: poll, when: 'call.args.command.contains("pr-env.sh") && has(call.args.until) && call.args.until.contains("ready") && has(call.args.seconds) && call.args.seconds >= 1800.0' }
+      - poll_stopped: {}
+
+order:
+  - [plan, dispatch, own, wait]

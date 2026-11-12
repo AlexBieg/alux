@@ -1,0 +1,27 @@
+schema: 2
+skill: e2e-report
+version: 1
+when: the report stage of the e2e-verify flow
+not_for: starting on its own; e2e-verify runs it
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+inputs:
+  min_scenarios:
+    type: int
+    default: 2
+    description: the fewest scenarios the plan may list
+
+vars:
+  RUN: /tmp/alux-e2e/${now_utc}
+
+nodes:
+  report:
+    say: >
+      Write ${RUN}/report.md with one line per scenario, from each scenario's ${RUN}/<id>.md,
+      either "PASS <id>: <what you saw>" or "FAIL <id>: <what went wrong>", each naming
+      the recording that shows it. A failing scenario is reported as FAIL, never fixed up or
+      skipped to make the run pass.
+    evidence:
+      - artifact_lines: { path: "${RUN}/report.md", pattern: "^(PASS|FAIL) [a-z0-9-]+: ", min: "${min_scenarios}" }

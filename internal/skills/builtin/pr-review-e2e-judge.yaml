@@ -1,0 +1,38 @@
+schema: 2
+skill: pr-review-e2e-judge
+version: 2
+when: the e2e-judge stage of the pr-review flow
+not_for: starting on its own; pr-review runs it
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+inputs:
+  pr:
+    type: string
+    description: the pull request as owner/name#number
+  env:
+    type: string
+    description: the PR's review-app state from pr_detail
+
+vars:
+  RUN: ~/.local/state/alux/skills/pr-review/${now_utc}
+
+nodes:
+  judge:
+    say: >
+      alux read the review-app state of ${pr}: ${env}. When it is not configured, the repo has no review
+      app: write the one line "not testable: no review app configured" and finish with testable no. When
+      it is none, the PR lacks the repo's review-app label and there is no environment to test against:
+      write the one line "not testable: no review-app label" and finish with testable no. When it is
+      unknown, the label state is unknown; treat it as labelled. When it is deploying, failed, ready or
+      unknown, e2e is required whenever the change can be exercised by
+      clicking through the app. That includes a backend change whose effect shows in a page, a form, a
+      list or an import. Only a change with no effect a user can reach in the browser is not testable.
+      A state that is hard to reach is never a reason to skip: plan how the test user gets there through
+      the app, for example by importing made-up data first. Write ${RUN}/e2e.md with two to four lines,
+      each "scenario: <name> | user <test user> | reaches <how the user gets to the state under test> |
+      steps: ... | expect: ...", drawn from the diff with made-up data only; or the one line
+      "not testable: <why no user-visible effect>". Finish with testable yes or no and the why.
+    evidence:
+      - artifact_lines: { path: "${RUN}/e2e.md", pattern: "^(scenario: [^|]+\\| user \\S+ \\| reaches \\S|not testable: \\S)", min: 1 }

@@ -1,0 +1,25 @@
+schema: 2
+skill: pr-ship-scope
+version: 2
+when: the scope stage of the pr-ship flow
+not_for: starting on its own; pr-ship runs it
+
+requires:
+  tools: [bash]
+
+inputs:
+  change:
+    type: string
+    description: the change to ship and anything the user adds
+
+nodes:
+  scope:
+    say: >
+      The user's words: "${change}". Settle the revision to ship (default @- if @ is empty, else @),
+      the repo's GitHub slug, the bookmark (reuse the change's own, else a short kebab-case name),
+      and the base (main, or the bookmark of the change below if it is stacked). Read the whole
+      diff (e.g. jj diff -r <rev>). Say rev, bookmark, base and slug back in one line, and finish the
+      stage with them as out; alux pushes and runs the review bot with them. If the change has no
+      description, or a PR title needs a ticket key nobody gave you, ask in one line; never file a ticket.
+    evidence:
+      - call: { tool: bash, when: 'call.commands.exists(c, (cmd(c, "jj diff") && (hasFlag(c, "-r") || hasFlag(c, "--revisions") || hasFlag(c, "--from") || hasFlag(c, "--to") || c.matches("\\s-r\\S"))) || (cmd(c, "jj show") && revs(c) != ["@"]) || (cmd(c, "jj log") && (hasFlag(c, "-p") || hasFlag(c, "--patch")) && (hasFlag(c, "-r") || hasFlag(c, "--revisions") || c.matches("\\s-r\\S"))))' }

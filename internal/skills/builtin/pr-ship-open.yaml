@@ -1,0 +1,20 @@
+schema: 2
+skill: pr-ship-open
+version: 1
+when: the open stage of the pr-ship flow
+not_for: starting on its own; pr-ship runs it
+
+requires:
+  tools: [pr_create, pr_edit]
+
+vars:
+  SHIP: ~/.local/state/alux/skills/pr-ship/${now_utc}
+
+nodes:
+  open:
+    say: >
+      If the bookmark has no PR yet, open one with pr_create: head the bookmark, base as settled
+      in the scope stage, the body from ${SHIP}/pr.md. Never mark it ready. If a draft already
+      exists, update its body with pr_edit only if it changed.
+    evidence:
+      - call: { tool: [pr_create, pr_edit] }

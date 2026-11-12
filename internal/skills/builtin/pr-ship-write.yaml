@@ -1,0 +1,37 @@
+schema: 2
+skill: pr-ship-write
+version: 2
+when: the write stage of the pr-ship flow
+not_for: starting on its own; pr-ship runs it
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+vars:
+  SHIP: ~/.local/state/alux/skills/pr-ship/${now_utc}
+
+nodes:
+  e2e-plan:
+    say: >
+      Decide whether the diff changes anything a user can see or do in a web UI. Write ${SHIP}/e2e.md:
+      either "skip: <why>" (backend-only, tooling, tests, copy nobody renders), or one line per
+      scenario, "scenario: <name> | user <fixture id> | reaches <why> | <steps> | expect <outcome>".
+      Pick a fixture user that can actually reach the state under test (a second page of results, an
+      order in the right status), and say in "reaches" how you know: a record, the seed data, or a
+      setup step in <steps> that creates made-up data. A scenario no fixture can reach is "skip: <why>".
+      The browser opens at 1280x800; a scenario needing another size names it in its steps, e.g.
+      "viewport 390x844". Include any scenario the user named. Use only made-up data.
+    evidence:
+      - artifact_lines: { path: "${SHIP}/e2e.md", pattern: "^(skip: |scenario: [^|]+\\| user \\S+ \\| reaches \\S)", min: 1 }
+
+  body:
+    say: >
+      Write ${SHIP}/pr.md, under 400 words, short and plain: one or two sentences on what
+      changed and why, link the ticket rather than restating it, then "## Testing" naming what proved
+      it. No per-function change list, no before/after table, no sentence per test. alux pushes the
+      bookmark once this stage finishes.
+    evidence:
+      - artifact_lines: { path: "${SHIP}/pr.md", pattern: "^## Testing\\s*$", min: 1 }
+
+order:
+  - [e2e-plan, body]

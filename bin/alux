@@ -1,0 +1,46 @@
+#!/bin/sh
+# Rebuilds only when the source hash differs from the last build's; ALUX_REBUILD=1 forces a build.
+root="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
+bin="${XDG_CACHE_HOME:-$HOME/.cache}/alux/bin/alux"
+stamp="$bin.stamp"
+mkdir -p "$(dirname "$bin")"
+
+# Built in a subshell so alux itself starts in the caller's directory, not the repo.
+# Renamed into place so an alux already running from the old binary is never overwritten mid-run.
+(
+	cd "$root" || exit 1
+	if ! command -v mise >/dev/null 2>&1; then
+		echo "alux: mise is not installed, and it provides the Go toolchain; run: brew install mise" >&2
+		exit 1
+	fi
+	env="$(mise env -s bash)" || {
+		echo "alux: mise env failed in $root; run 'mise install' there and retry" >&2
+		exit 1
+	}
+	eval "$env"
+	hash="$(
+		{
+			go version
+			find cmd internal go.mod go.sum mise.toml -type f ! -name '*_test.go' ! -name '.*' -print0 |
+				sort -z | xargs -0 shasum -a 256
+		} | shasum -a 256 | cut -d' ' -f1
+	)"
+	if [ -z "$ALUX_REBUILD" ] && [ -x "$bin" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$hash" ]; then
+		exit 0
+	fi
+	echo "alux: building..." >&2
+	go build -o "$bin.$$" ./cmd/alux || {
+		echo "alux: go build failed in $root (output above)" >&2
+		exit 1
+	}
+	mv -f "$bin.$$" "$bin"
+	printf '%s\n' "$hash" >"$stamp.$$" && mv -f "$stamp.$$" "$stamp"
+) || exit 1
+
+# From the repo root, so the caller's project mise.toml is never loaded.
+env="$(mise env -C "$root" -s bash)" || {
+	echo "alux: mise env failed; run 'mise install' in $root and retry" >&2
+	exit 1
+}
+eval "$env"
+exec "$bin" "$@"

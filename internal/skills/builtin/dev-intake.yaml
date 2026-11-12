@@ -1,0 +1,98 @@
+schema: 2
+skill: dev-intake
+version: 1
+when: the intake stage of the dev-cycle flow
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [vault_search, vault_record_read, grep, str_replace_based_edit_tool]
+  optional_tools: [task, "${knowledge_tool}", web_search, ask_user]
+
+inputs:
+  goal:
+    type: string
+    description: a ticket key, a URL, or the goal in words
+  repo:
+    type: string
+    default: "the jj repo holding the session's working directory (jj root)"
+    description: the jj repo the work happens in
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  intake:
+    say: >
+      The goal: ${goal}. The repo is ${repo}: find its absolute path with jj root from the working
+      directory, say it back to the user in one line, and use that path wherever these steps say the
+      repo. If the working directory is not in a jj repo, ask the user which repo. Search the vault and the record store for its ticket key and the systems it
+      names, and read the ticket hub in full when one exists. Use a ticket-tracker tool when one is offered.
+      Read every source the ticket cites in full, Slack threads, docs and linked tickets alike,
+      rather than the ticket's summary of them: the summary drops the caveats that decide scope.
+      When a source cannot be read, say so to the user and ask for what it says before going on.
+      Write ${RUN}/brief.md with exactly these lines and nothing under them: "Goal: ", "Why: " (the
+      user or business reason, not the change), "Done when: " (one sentence), "Out of scope: ", and
+      "Read: " (each cited source you read in full, or "none cited").
+    evidence:
+      - call: { tool: vault_search }
+      - call: { tool: vault_record_read }
+      - artifact_lines: { path: "${RUN}/brief.md", pattern: "^(Goal|Why|Done when|Out of scope|Read): \\S", min: 5 }
+
+  code:
+    say: >
+      Read the code the goal touches in the repo: the entry points, the callers of what will change,
+      the tests beside it, and any AGENTS.md or repo guide. Note which build, lint and test commands
+      prove a change there, since every change's verify is built from them.
+    evidence:
+      - call: { tool: grep }
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view"', min: 5 }
+
+  research:
+    say: >
+      When the goal needs more than the vault and the code, such as library behaviour or prior
+      design, dispatch a research agent with a brief that says where it should look and what it
+      should report. Skip this when the code and the vault already answer it.
+    optional: true
+    when: { available: task }
+    evidence:
+      - call: { tool: task, when: 'call.args.agent == "research"' }
+
+  internal:
+    say: Search the connected internal knowledge tool with short distinctive keywords for context on the goal. Skip this when nothing internal is relevant.
+    optional: true
+    when: { available: "${knowledge_tool}" }
+    evidence:
+      - call: { tool: "${knowledge_tool}" }
+
+  web:
+    say: Search the web for library or API behaviour the change depends on. Skip this when nothing outside the repo matters.
+    optional: true
+    when: { available: web_search }
+    evidence:
+      - call: { tool: web_search }
+
+  questions:
+    say: >
+      Write ${RUN}/questions.md with one line per open product or technical question, each as
+      "Asked: <question>" when only the user can answer it, or "Assumed: <question> -> <your answer and
+      why>" when the code or vault answers it well enough. Write the single line "None: <why>" when
+      nothing is open.
+    evidence:
+      - artifact_lines: { path: "${RUN}/questions.md", pattern: "^(Asked|Assumed|None): \\S", min: 1 }
+
+  ask:
+    say: >
+      Put the Asked questions to the user with ask_user, in one series, and say each answer back in one
+      line. Then add one line to ${RUN}/questions.md under each Asked line, "Answered: <question> -> <the
+      user's answer>", so the file holds every answer the spec rests on.
+    optional: true
+    when: { available: ask_user }
+    evidence:
+      - call: { tool: ask_user }
+      - artifact_lines: { path: "${RUN}/questions.md", pattern: "^Answered: \\S.* -> \\S", min: 1 }
+
+order:
+  - [intake, code, questions, ask]
+  - [intake, research, questions]
+  - [intake, internal, questions]
+  - [intake, web, questions]

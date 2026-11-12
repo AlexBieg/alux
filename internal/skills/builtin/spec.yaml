@@ -1,0 +1,77 @@
+schema: 2
+skill: spec
+version: 2
+when: the user wants a technical spec written, then critiqued by a blind panel of expert personas before any code
+not_for: implementing the spec, reviewing a PR (use pr-review), or a change small enough to just make
+starts: [user]
+
+requires:
+  tools: [vault_search, vault_record_read, vault_record, grep, str_replace_based_edit_tool, task, ask_user]
+
+inputs:
+  goal:
+    type: string
+    description: a ticket key, a URL, or the goal in words
+
+vars:
+  RUN: ~/.local/state/alux/skills/spec/${now_utc}
+
+stages:
+  - draft: { checklist: spec-draft }
+  - panel:
+      checklist: spec-panel
+      out:
+        critics:
+          type: array
+          minItems: 4
+          items:
+            type: object
+            properties:
+              id: string
+              lens: string
+              focus: string
+  - critics:
+      foreach: { in: panel.critics, as: critic, parallel: true }
+      stages:
+        - critique:
+            spawn:
+              agent: research
+              run: spec-critic
+              inputs: { spec: "${RUN}/spec.md", persona: "${critic.id}", lens: "${critic.lens}", focus: "${critic.focus}" }
+              report: "${RUN}/critique-${critic.id}.md"
+  - triage:
+      run:
+        tool: task
+        input:
+          agent: research
+          background: false
+          name: spec critique triage
+          objective: >
+            Triage the critiques a blind panel raised on a technical spec before they reach the user:
+            check each against the code, merge duplicates, and decide which can be folded into the
+            spec, which only the user can settle, and which are wrong.
+          context: "Spec: ${RUN}/spec.md\nCritiques, one file per critic, one critique per line: ${RUN}/critique-*.md"
+          scope: >
+            Find the critique files with glob in ${RUN}. Read spec.md and every critique file with
+            view, then the code, records and vault notes each
+            critique points at. The spec and critiques are claims; the code is the truth about what
+            exists today.
+          boundaries: >
+            Merge critiques that name the same problem, keeping every source persona. Give each one
+            exactly one verdict. fold: the code, a record or the spec's own goal settles it, so the
+            spec can change without the user; say the exact change. ask: a product call, a tradeoff
+            or a priority only the user can make; phrase it as one question with two or three options
+            and your recommendation. open: critics contradict each other and reading cannot settle
+            it; name both positions and never decide by majority. discard: the code or the spec shows
+            the critique is wrong; quote the lines. Verify any number or categorical claim a critic
+            makes before keeping it. Drop nothing silently: every critique listed appears in the
+            report. Edit nothing.
+          done: >
+            Every critique line in every critique file has a verdict of fold, ask, open, discard or merged into
+            another, and every fold names the spec section and the change.
+          report: >
+            One line per critique, merged ones once: verdict, source personas, severity, spec section,
+            problem, and for fold the change to make, for ask the question with options and your
+            recommendation, for open both positions, for discard the quoted lines. Folds first, then
+            asks, then open, then discards.
+  - revise: { checklist: spec-revise }

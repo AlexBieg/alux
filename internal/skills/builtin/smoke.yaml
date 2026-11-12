@@ -1,0 +1,20 @@
+schema: 2
+skill: smoke
+version: 3
+when: checking that skill runs work end to end, at the least token cost
+not_for: any real task
+starts: [user, model]
+
+requires:
+  tools: [bash, str_replace_based_edit_tool, ask_user]
+
+stages:
+  - step: { run: { tool: bash, input: { command: "echo smoke" } } }
+  - ask:
+      run:
+        tool: ask_user
+        input:
+          question: Which answer should smoke print back?
+          options: [{ label: Red }, { label: Green }]
+  - slow: { run: { tool: bash, input: { command: "echo 'press Stop now'; sleep 15" } } }
+  - view: { checklist: smoke-view }

@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "alux skill flow, format v1",
+  "type": "object",
+  "required": ["schema", "skill", "version", "when", "stages"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 2 },
+    "skill": { "$ref": "#/$defs/name" },
+    "version": { "type": "integer", "minimum": 1 },
+    "when": { "type": "string", "minLength": 1 },
+    "not_for": { "type": "string", "minLength": 1 },
+    "starts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["user", "model"] }
+    },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tools": { "$ref": "#/$defs/tools" },
+        "optional_tools": { "$ref": "#/$defs/tools" }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/ident" },
+      "additionalProperties": { "$ref": "#/$defs/input" }
+    },
+    "vars": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "stages": { "$ref": "#/$defs/stages" }
+  },
+  "$defs": {
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 1,
+        "propertyNames": { "$ref": "#/$defs/name" },
+        "additionalProperties": { "$ref": "#/$defs/stage" }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "field": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_]*$" },
+        "input": { "$ref": "#/$defs/ident" },
+        "equals": {},
+        "available": { "type": "string", "minLength": 1 }
+      }
+    },
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "ident": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "tools": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "input": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["string", "int", "bool"] },
+        "description": { "type": "string" },
+        "default": {},
+        "enum": { "type": "array", "minItems": 1, "uniqueItems": true }
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "checklist": { "$ref": "#/$defs/name" },
+        "run": {
+          "type": "object",
+          "required": ["tool"],
+          "additionalProperties": false,
+          "properties": {
+            "tool": { "type": "string", "minLength": 1 },
+            "input": { "type": "object" },
+            "capture": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "$ref": "#/$defs/ident" },
+              "additionalProperties": {
+                "type": "object",
+                "required": ["pattern"],
+                "additionalProperties": false,
+                "properties": {
+                  "pattern": { "type": "string", "minLength": 1 },
+                  "type": { "const": "int" }
+                }
+              }
+            }
+          }
+        },
+        "spawn": {
+          "type": "object",
+          "required": ["agent", "run"],
+          "additionalProperties": false,
+          "properties": {
+            "agent": { "type": "string", "minLength": 1 },
+            "run": { "$ref": "#/$defs/name" },
+            "inputs": { "type": "object" },
+            "change": { "type": "string" },
+            "report": { "type": "string", "minLength": 1 }
+          }
+        },
+        "out": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/ident" },
+          "additionalProperties": { "$ref": "#/$defs/field" }
+        },
+        "foreach": {
+          "type": "object",
+          "required": ["in", "as"],
+          "additionalProperties": false,
+          "properties": {
+            "in": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_]*$" },
+            "as": { "$ref": "#/$defs/ident" },
+            "parallel": { "type": "boolean" }
+          }
+        },
+        "repeat": {
+          "type": "object",
+          "required": ["max", "until"],
+          "additionalProperties": false,
+          "properties": {
+            "max": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "string", "pattern": "^\\$\\{[a-z][a-z0-9_]*\\}$" }] },
+            "until": { "$ref": "#/$defs/condition" }
+          }
+        },
+        "stages": { "$ref": "#/$defs/stages" },
+        "inputs": { "type": "object" },
+        "when": { "$ref": "#/$defs/condition" },
+        "on_fail": { "$ref": "#/$defs/name" },
+        "max": { "type": "integer", "minimum": 1 },
+        "strict": { "type": "boolean" }
+      }
+    },
+    "field": {
+      "anyOf": [
+        { "enum": ["string", "integer", "boolean"] },
+        { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        { "$ref": "#/$defs/schemaField" }
+      ]
+    },
+    "schemaField": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["string", "integer", "boolean", "array", "object"] },
+        "enum": { "type": "array", "minItems": 1, "uniqueItems": true },
+        "format": { "const": "command" },
+        "items": { "$ref": "#/$defs/schemaField" },
+        "properties": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/ident" },
+          "additionalProperties": { "$ref": "#/$defs/field" }
+        },
+        "minItems": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

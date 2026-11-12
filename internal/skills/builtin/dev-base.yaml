@@ -1,0 +1,26 @@
+schema: 2
+skill: dev-base
+version: 1
+when: the base stage of the dev-cycle flow
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [bash]
+
+inputs:
+  base:
+    type: string
+    description: the revset the first change builds on
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  base:
+    say: >
+      In the repo, run jj new ${base} so the first coder builds on it, and say the new change back to
+      the user in one line. When ${RUN}/changes.md already lists landed changes, because alux reopened
+      the plan after a coder failed, run jj new on the bookmark of the last one instead, so the stack
+      stays whole. Leave the user's own work where it was.
+    evidence:
+      - call: { tool: bash, when: 'call.commands.exists(c, cmd(c, "jj new") && revs(c) != ["@"])' }

@@ -1,0 +1,15 @@
+schema: 2
+skill: smoke-child
+version: 1
+when: the spawned stage of the smoke-spawn flow
+not_for: any real task
+starts: [model]
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+nodes:
+  view:
+    say: View go.mod with view_range [1, 1], then call finish_skill. Do nothing else.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view"' }

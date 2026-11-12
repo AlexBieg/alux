@@ -1,0 +1,54 @@
+schema: 2
+skill: dev-spec
+version: 1
+when: the spec stage of the dev-cycle flow
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [str_replace_based_edit_tool, vault_record]
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  spec:
+    say: >
+      Write ${RUN}/spec.md under two headings, "## Product" (what a user sees and does, the edge
+      cases, what stays the same) and "## Technical" (the design, the data or API changes, the
+      risks, and what you chose against and why). Keep each one short enough to read in two
+      minutes. Lead with any limitation.
+    evidence:
+      - artifact_lines: { path: "${RUN}/spec.md", pattern: "^## (Product|Technical)\\s*$", min: 2 }
+
+  acceptance:
+    say: >
+      Write ${RUN}/acceptance.yaml, the contract every later stage checks against, as a mapping with
+      a scenarios list. Give each criterion an id (at most 40 lowercase letters, digits and dashes,
+      no dots), a name (one observable outcome), kind (product or technical), proof (test, e2e or
+      review), target (local, pr-env or none; none unless proof is e2e), and source (the ticket line
+      or decision it comes from). Prefer test over e2e and e2e over review. A criterion a command can
+      check, such as a grep over go.mod or a lint rule, is not a review criterion: give it proof test
+      and put the command in its change's verify. Keep review for what needs judgement. One e2e
+      criterion checks one state of a running app: when it needs the app stopped or restarted, split
+      it into one criterion per state, so a browser agent that cannot start processes can check each.
+      Give every e2e criterion a setup: the user to log in as, the data that must exist, and the
+      steps that put the app in the state it checks, found in the fixtures, seed data or record
+      store, not guessed. When no fixture reaches that state and the setup cannot create it, the
+      criterion cannot pass in a browser: make it a test criterion instead, and tell the user. Count
+      e2e flows, not criteria, where the criteria split from one flow count as one. At most one flow
+      is local: a lone flow is local; with several, either one is local and the rest pr-env, or all
+      are pr-env. PR-env criteria run only after the user approves and the draft PR is up.
+    evidence:
+      - artifact_lines: { path: "${RUN}/acceptance.yaml", pattern: "^\\s*- id: [a-z0-9][a-z0-9-]*\\s*$", min: 1 }
+
+  record:
+    say: >
+      Store each product and technical decision from the spec and the answers to Asked questions
+      with vault_record, under the ticket's entity when there is one, so a later session can pick up
+      the cycle. Search before writing so you supersede rather than duplicate.
+    evidence:
+      - call: { tool: vault_record, when: 'call.args.op == "add"' }
+
+order:
+  - [spec, acceptance]
+  - [spec, record]

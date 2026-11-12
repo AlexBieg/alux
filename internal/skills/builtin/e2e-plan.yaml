@@ -1,0 +1,39 @@
+schema: 2
+skill: e2e-plan
+version: 1
+when: the plan stage of the e2e-verify flow
+not_for: starting on its own; e2e-verify runs it
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+inputs:
+  change:
+    type: string
+    description: what changed and what should now be true
+  app_url:
+    type: string
+    description: the origin of the already-running app
+  diff:
+    type: string
+    description: where to read the change's diff
+  min_scenarios:
+    type: int
+    default: 2
+    description: the fewest scenarios the plan may list
+
+vars:
+  RUN: /tmp/alux-e2e/${now_utc}
+
+nodes:
+  plan:
+    say: >
+      The app must already be running at ${app_url}; this skill does not start it.
+      Read the diff (${diff}) and the change: ${change}. Plan at least ${min_scenarios} scenarios,
+      each with an id (at most 40 lowercase letters, digits and dashes), a name, a user (the test
+      user it logs in as), its steps in one line, and expect (what should be true at the end).
+      Every scenario is recorded. Use only made-up test data: personal and real user data never
+      belong in a plan. Write ${RUN}/plan.md with one line per scenario, "- <id>: <name>", then
+      finish the stage with the same scenarios as out.
+    evidence:
+      - artifact_lines: { path: "${RUN}/plan.md", pattern: "^- [a-z0-9-]{1,40}: \\S", min: "${min_scenarios}" }

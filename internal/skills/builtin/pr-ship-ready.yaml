@@ -1,0 +1,36 @@
+schema: 2
+skill: pr-ship-ready
+version: 1
+when: the ready stage of the pr-ship flow
+not_for: starting on its own; pr-ship runs it
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+vars:
+  SHIP: ~/.local/state/alux/skills/pr-ship/${now_utc}
+
+nodes:
+  prefs:
+    say: >
+      Write every file under ${SHIP} with the editor tool, never through bash.
+      Run the preference pass on the final diff, as before every push, using the user's code
+      preferences and the repo guide, defaulting to: no comments, one
+      line at most, no ticket keys or narration of earlier implementations in comments, docstrings
+      or test names, no cruft or debug leftovers, and only tests that assert real behaviour. Fix what
+      you find in the change. Write ${SHIP}/prefs.md as one line, "clean" or "fixed <what>".
+    evidence:
+      - artifact_lines: { path: "${SHIP}/prefs.md", pattern: "^(clean|fixed \\S)", min: 1 }
+
+  verify-script:
+    say: >
+      Write ${SHIP}/verify.sh: "set -euo pipefail", a cd to the repo, then the repo's own checks for
+      what the diff touches: tests for the changed packages, plus lint, types and format where the
+      repo has them (read its AGENTS.md or package scripts to find the commands). Do not run it
+      yourself: alux runs it once this stage finishes. When it fails, alux reopens this stage; fix
+      the change, rerun the prefs pass on the fix, and finish the stage again.
+    evidence:
+      - artifact_lines: { path: "${SHIP}/verify.sh", pattern: "^set -euo pipefail", min: 1 }
+
+order:
+  - [prefs, verify-script]

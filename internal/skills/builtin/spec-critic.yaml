@@ -1,0 +1,46 @@
+schema: 2
+skill: spec-critic
+version: 1
+when: one critic of the spec flow's blind panel critiques a technical spec through one persona's lens
+not_for: starting on its own; the spec flow spawns it
+starts: [model]
+
+requires:
+  tools: [str_replace_based_edit_tool, grep]
+
+inputs:
+  spec:
+    type: string
+    description: the path of the spec to critique
+  persona:
+    type: string
+    description: the persona id to report under
+  lens:
+    type: string
+    description: what this persona looks for
+  focus:
+    type: string
+    description: the spec sections to focus on and what to probe in this spec
+
+nodes:
+  spec:
+    say: >
+      You are the ${persona} critic: ${lens}. Read ${spec} in full; focus on ${focus}. Read nothing
+      else from the directory that holds it, and do not read the vault or the record store: your
+      critique is only worth something if it comes from the spec and the code alone.
+    evidence:
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view" && call.args.path == inputs.spec' }
+
+  critique:
+    say: >
+      Check every claim the spec makes about existing code against the repo, and read the code its
+      design would touch. Attack the design, not its wording. End with a report of one critique per
+      line, as "- ${persona} | <blocking or non-blocking> | <spec section> | problem: ... | evidence:
+      <path:line or reasoning> | proposal: ...", or the one line "- ${persona} | none | no
+      critiques". Blocking means the design fails its goal or breaks something as written.
+    evidence:
+      - call: { tool: grep }
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command == "view" && call.args.path != inputs.spec', min: 3 }
+
+order:
+  - [spec, critique]

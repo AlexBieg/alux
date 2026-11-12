@@ -1,0 +1,32 @@
+{
+  "guardian": { "url": "http://127.0.0.1:11434", "model": "d3:2b" },
+  "web": { "provider": "brave", "key": "${BRAVE_API_KEY}" },
+  "vault": "/path/to/your/markdown/notes",
+  "tickets_dir": "Tickets",
+  "tickets": { "mcp_server": "your-tracker" },
+  "knowledge_tool": "mcp__your-server__search",
+  "routing": { "small": "claude-haiku-5-5", "medium": "claude-sonnet-5-5" },
+  "workspaces": {
+    "/path/to/your/repo": { "pool": true }
+  },
+  "prs": {
+    "repos": {
+      "your-org/your-repo": {
+        "kinds": {
+          "review": { "queries": ["user-review-requested:@me"], "exclude": ["draft"] },
+          "mine": { "queries": ["author:@me"] }
+        },
+        "review_app": {
+          "label": "deploy-preview", "bot": "preview-bot", "host_suffix": ".preview.example.com", "health_check": "Preview Ready",
+          "heading": "Preview deployed to:",
+          "slug_app": "api", "apps_dir": "apps/", "skip": ["api"], "rank": ["web"], "login_app": "api"
+        },
+        "ready_label": "ready-for-review",
+        "bugbot": false
+      }
+    }
+  },
+  "coder_mcp_readonly": {
+    "context7": ["resolve-library-id", "get-library-docs"]
+  }
+}

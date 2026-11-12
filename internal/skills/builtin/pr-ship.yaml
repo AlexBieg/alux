@@ -1,0 +1,34 @@
+schema: 2
+skill: pr-ship
+version: 3
+when: the user says hand-written code is done and wants it verified, pushed, opened as a draft PR, reviewed by the repo's review bot when it has bugbot set, and watched
+not_for: work planned by dev-cycle, which ships its own PRs, reviewing someone else's PR, or marking a PR ready for review
+starts: [user]
+
+requires:
+  tools: [bash, str_replace_based_edit_tool, pr_push, pr_create, pr_edit, pr_detail, poll]
+  optional_tools: [task, pr_thread_reply, pr_review_bot_run]
+
+inputs:
+  change:
+    type: string
+    description: the change to ship (a jj revset, or empty for @-) plus anything the user adds, such as the ticket key or UI scenarios to check
+
+vars:
+  SHIP: ~/.local/state/alux/skills/pr-ship/${now_utc}
+
+stages:
+  - scope: { checklist: pr-ship-scope, out: { bookmark: string, rev: string, repo: string, base: string } }
+  - ready: { checklist: pr-ship-ready }
+  - verify:
+      run: { tool: bash, input: { command: "bash ${SHIP}/verify.sh", seconds: 600 } }
+      on_fail: ready
+      max: 3
+  - write: { checklist: pr-ship-write }
+  - push:
+      run: { tool: pr_push, input: { bookmark: "${scope.bookmark}", rev: "${scope.rev}", repo: "${scope.repo}" } }
+  - open: { checklist: pr-ship-open }
+  - review-bot:
+      run: { tool: pr_review_bot_run, input: { head: "${scope.bookmark}", repo: "${scope.repo}" } }
+      when: { available: pr_review_bot_run }
+  - watch: { checklist: pr-ship-watch }

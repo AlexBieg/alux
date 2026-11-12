@@ -1,0 +1,50 @@
+schema: 2
+skill: dev-verdict
+version: 3
+when: the verdict stage of the dev-cycle flow, once per review round
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [bash, str_replace_based_edit_tool]
+
+inputs:
+  id: { type: string, description: the change's plan id }
+  bookmark: { type: string, description: the change's bookmark }
+  task: { type: string, description: the coder's original brief }
+  round: { type: int, description: "the review round, from 1" }
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  verdict:
+    say: >
+      Read the review of ${id} that just landed, ${RUN}/review-${id}-${round}.md, and the diff (e.g.
+      jj diff -r ${bookmark}). Append a "## round ${round}" header to ${RUN}/findings-${id}.md with the
+      editor, then this round's finding lines under it, adding as blocking any breach of the user's
+      code preferences you see in the diff. Copy every "[blocking] path:line: ..." line of the review
+      either as it is or, where you judge it wrong, as "[non-blocking] path:line: ... (overruled: <why>)".
+      Finish the stage with kind clean when no blocking finding remains, or kind fix with a task
+      holding the original brief and every blocking finding; give task "" for clean. The original
+      brief: ${task}
+    evidence:
+      - call: { tool: bash, when: 'call.commands.exists(c, (cmd(c, "jj diff") && (hasFlag(c, "-r") || hasFlag(c, "--revisions") || hasFlag(c, "--from") || hasFlag(c, "--to") || c.matches("\\s-r\\S"))) || (cmd(c, "jj show") && revs(c) != ["@"]) || (cmd(c, "jj log") && (hasFlag(c, "-p") || hasFlag(c, "--patch")) && (hasFlag(c, "-r") || hasFlag(c, "--revisions") || c.matches("\\s-r\\S"))))' }
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command != "view" && call.args.path.endsWith("/findings-" + inputs.id + ".md")' }
+      # A finding's key is its path:line, so a line range a.go:12-14 keys as a.go:12.
+      - artifact_lines:
+          path: ${RUN}/findings-${id}.md
+          section: "## round ${round}"
+          pattern: '^\s*(?:[-*]\s+)?(?:\[blocking\]\s+(\S+?:\d+)|\[non-blocking\]\s+(\S+?:\d+).*\(overruled:\s*[^)\s][^)]*\))'
+          covers: { path: "${RUN}/review-${id}-${round}.md", pattern: '^\s*(?:[-*]\s+)?\[blocking\]\s+(\S+?:\d+)' }
+
+  clean:
+    when: { out: kind, equals: clean }
+    say: >
+      kind clean is refused while this round's section of ${RUN}/findings-${id}.md holds a [blocking]
+      line. Either finish with kind fix and a task naming those findings, or, where a finding is wrong,
+      rewrite it as "[non-blocking] path:line: ... (overruled: <why>)".
+    evidence:
+      - artifact_lines: { path: "${RUN}/findings-${id}.md", section: "## round ${round}", pattern: '^\s*(?:[-*]\s+)?\[blocking\]', max: 0 }
+
+order:
+  - [verdict, clean]

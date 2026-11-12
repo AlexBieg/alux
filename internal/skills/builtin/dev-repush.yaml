@@ -1,0 +1,23 @@
+schema: 2
+skill: dev-repush
+version: 1
+when: the repush stage of the dev-cycle flow's watch, after a fix
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [land_run, pr_push, str_replace_based_edit_tool]
+  optional_tools: [pr_thread_reply]
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  repush:
+    say: >
+      Call land_run on the fix, rerun the preference pass on its diff, then re-push with pr_push every
+      bookmark from the fixed change up the stack, bottom first. Reply to each thread you addressed with
+      pr_thread_reply. Append "pushed: <bookmarks>" to ${RUN}/watch.md with the editor.
+    evidence:
+      - call: { tool: land_run }
+      - call: { tool: pr_push }
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command != "view" && call.args.path.endsWith("/watch.md")' }

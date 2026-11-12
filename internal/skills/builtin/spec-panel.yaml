@@ -1,0 +1,32 @@
+schema: 2
+skill: spec-panel
+version: 2
+when: the panel stage of the spec flow
+not_for: starting on its own; spec runs it
+
+requires:
+  tools: [str_replace_based_edit_tool]
+
+vars:
+  RUN: ~/.local/state/alux/skills/spec/${now_utc}
+
+nodes:
+  plan:
+    say: >
+      Write ${RUN}/areas.md with one line per critic, as "- <persona id> | <lens> | <spec sections to
+      focus on and what to probe in this spec>", one for each of these four personas, with the lens
+      as written here.
+      failure-hunter: partial failure, retries, concurrency, empty and duplicate inputs, and states
+      the spec never mentions; name the input or sequence that breaks the design.
+      simplifier: what can be cut, deferred or done with less; the smallest version that still meets
+      the goal; flag every part the goal does not need.
+      operator: rollout order, migrations and backfills, observability, how to undo it, and what
+      happens to data and users already in flight.
+      product: whether the Product section matches what a user will actually see, missing edge
+      cases in the flow, and any claim no one could test.
+      You may add one more line for a lens the spec plainly needs, such as database or auth, writing
+      its lens yourself and ending the line "| added: <reason>". Give the same lines as critics in
+      the stage's out, one object per line with id, lens and focus. The focus says where to look,
+      never what you expect a critic to find.
+    evidence:
+      - artifact_lines: { path: "${RUN}/areas.md", pattern: "^- [a-z][a-z0-9-]* \\|", min: 4 }

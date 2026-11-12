@@ -1,0 +1,60 @@
+schema: 2
+skill: pr-review-write
+version: 1
+when: the write stage of the pr-review flow
+not_for: starting on its own; pr-review runs it
+
+requires:
+  tools: [review_load]
+
+inputs:
+  pr:
+    type: string
+    description: the pull request as owner/name#number
+  prior_head:
+    type: string
+    default: ""
+    description: the head commit the stored review was checked against
+
+vars:
+  RUN: ~/.local/state/alux/skills/pr-review/${now_utc}
+
+nodes:
+  write:
+    say: >
+      Write ${RUN}/review.md from the triage report alux just returned, naming the personas behind each finding:
+      a first line "Verdict: approve", "Verdict: approve with comments" or "Verdict: request
+      changes" with the reason; what the change does in two or three sentences; kept, merged,
+      grouped and open findings, most serious first, each as "- [blocking] <class> · path:line —
+      <problem>" or "- [non-blocking] ...", with impact, evidence and fix on indented lines beneath, with open ones marked "open:"
+      and the disagreement named; a grouped finding sits at the path:line its fix goes at, names
+      the fix, and lists each member's path:line and symptom beneath it; questions for the author
+      only where the code cannot answer them; what was and was not read; on a re-review, "new" or
+      "carried" beside each finding and a "Fixed since ${prior_head}" section listing each prior
+      finding triage marked fixed; an "Already raised" section listing each covered finding with
+      who raised it; last, a "Discarded by triage" section listing each discarded
+      finding with its persona and the reason. Mark "read only" beside a finding that needs running
+      the code to confirm. Leave out praise, linter nits and empty sections. Post nothing on GitHub.
+    evidence:
+      - artifact_lines: { path: "${RUN}/review.md", pattern: "^Verdict: (approve|approve with comments|request changes)\\b", min: 1 }
+
+  load:
+    say: >
+      Call review_load once for ${pr}, as repo and number, with the verdict and summary from
+      review.md and every kept, merged, grouped and open finding: its severity, class, path,
+      start_line and end_line in the PR's new code (omit both for a whole-file finding), personas,
+      open true for open ones, and problem, impact, evidence and fix as triage gave them. Load a
+      group as one finding anchored where its fix goes, with every member's path:line and symptom
+      in its evidence. Leave out the discarded, fixed and
+      covered ones. Take lines from triage as they stand; review_load checks them, so do not trace
+      them again first. A kept finding whose sources include prior-<n> gets continues: n, so alux carries
+      the user's dismissal and thread from the stored review onto it; give continues to no other
+      finding. If it refuses, fix every problem it lists and call again with every finding. Then
+      show the user the review as written in review.md, name any findings it reported as off the
+      diff, say which dismissals and threads it reported carried and which dropped, and tell them
+      to open it beside the code with /prs then g.
+    evidence:
+      - call: { tool: review_load }
+
+order:
+  - [write, load]

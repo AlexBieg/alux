@@ -1,0 +1,28 @@
+schema: 2
+skill: dev-land
+version: 2
+when: the land stage of the dev-cycle flow, once per change
+not_for: starting on its own; dev-cycle runs it
+
+requires:
+  tools: [land_run, bash, str_replace_based_edit_tool]
+
+inputs:
+  id: { type: string, description: the change's plan id }
+  name: { type: string, description: the change's PR title }
+  bookmark: { type: string, description: the change's bookmark }
+
+vars:
+  RUN: ~/.local/state/alux/skills/dev-cycle/${now_utc}
+
+nodes:
+  land:
+    say: >
+      Land change ${id} with land_run; its coder has reported. Then in the repo run
+      jj describe -m "${name}", move ${bookmark} to @ (e.g. jj bookmark set ${bookmark} -r @) and
+      jj new, so the next coder builds on it. Append "- ${id} <change id of @->" to ${RUN}/changes.md
+      with the editor.
+    evidence:
+      - call: { tool: land_run }
+      - call: { tool: bash, when: 'call.commands.exists(c, (cmd(c, "jj bookmark set") || cmd(c, "jj bookmark move") || cmd(c, "jj b set") || cmd(c, "jj b move")) && inputs.bookmark in positional(c))' }
+      - call: { tool: str_replace_based_edit_tool, when: 'call.args.command != "view" && call.args.path.endsWith("/changes.md")' }
