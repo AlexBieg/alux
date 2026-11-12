@@ -1,10 +1,51 @@
 # alux
 
-A terminal coding agent for macOS, built on Claude. It runs shell commands
-in a Seatbelt sandbox and screens each one with a small local model before
-it runs.
+alux (ah-LOOSH) is a terminal coding agent for macOS, built on Claude. It
+is one person's harness, shaped around one way of working, and it changes
+often. It is more useful as a source of ideas than as a tool to adopt as is.
 
-macOS only.
+The name comes from Yucatec Maya folklore. An alux is a small spirit a
+farmer invites onto his land. It works hard inside the walls built for it,
+and runs wild outside them.
+
+One rule shapes the design: the model acts only where deterministic code
+cannot, and the harness guards everything it does.
+
+## What's in it
+
+- **Safety in layers.** Every shell command is parsed against a per-agent
+  allow-list first. Anything the parser cannot read with certainty, such
+  as `eval` or command substitution, is refused. What passes runs in a
+  Seatbelt sandbox set by the mode. A command that asks to leave the
+  sandbox goes to the guardian, a small local model that scores what the
+  command does. The harness, not the model, decides whether it runs or
+  asks you.
+- **Undo through jj.** There are no checkpoints. alux snapshots the repo
+  with jj whenever the agent goes idle, so `jj op log` and `jj undo` reach
+  any earlier state, whatever changed the files.
+- **Skills checked against evidence.** A skill is a flow of steps. A step
+  is done only when the harness's own log holds the tool call that proves
+  it, matched by a CEL condition. The model can waive a step, but only by
+  saying why, on the record.
+- **A record store instead of notes.** The agent keeps typed records about
+  named entities: one fact each, append-only, each with its source. Rules
+  live there too. Each rule reaches the agent at the first tool call it
+  applies to, rather than sitting in the prompt all session.
+- **A workspace per session.** Each session gets its own jj workspace from
+  a pool, and each coder subagent gets another. Work waits as a described
+  change until you land it.
+- **Compaction in code.** `/compact` folds the transcript into a ledger
+  without asking a model to summarise it. Each ledger line keeps the step
+  numbers it replaced, and `recall` brings those steps back in full.
+- **Local PR review.** A panel of reviewer subagents, picked from the
+  changed paths, reviews a pull request. Findings are drawn beside the
+  code. Nothing reaches GitHub except as a pending review you submit
+  yourself.
+- **Browser checks with recordings.** A verifier subagent drives a
+  headless browser through accessibility snapshots, and records a video
+  with the idle stretches cut.
+
+[FEATURES.md](FEATURES.md) lists everything in detail.
 
 ## Install
 
