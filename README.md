@@ -162,3 +162,8 @@ session, and auto mode drops to local; the status line then says so.
 alux sends desktop notifications through `osascript`, so macOS delivers
 them as Script Editor. Allow Script Editor in System Settings →
 Notifications, or you will not see them.
+
+## License
+
+Copyright (C) 2026 Alex Bieg. alux is free software under the GNU General
+Public License, version 3; see [LICENSE](LICENSE).
