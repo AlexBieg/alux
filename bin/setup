@@ -1,15 +1,25 @@
 #!/bin/sh
-# Installs alux's external tools with Homebrew and pulls its Ollama models; safe to re-run.
+# Installs alux's external tools with Homebrew, and with --ollama its guardian and embedding models; safe to re-run.
 set -e
 root="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
+
+ollama=""
+for arg; do
+	case "$arg" in
+	--ollama) ollama=1 ;;
+	*) echo "usage: bin/setup [--ollama]" >&2; exit 2 ;;
+	esac
+done
 
 if ! command -v brew >/dev/null 2>&1; then
 	echo "setup: Homebrew is required; install it from https://brew.sh and re-run" >&2
 	exit 1
 fi
 
+tools="mise rg:ripgrep fd jj gh ffmpeg"
+[ -z "$ollama" ] || tools="$tools ollama"
 need=""
-for tool in mise rg:ripgrep fd ollama jj gh ffmpeg; do
+for tool in $tools; do
 	cmd="${tool%%:*}"
 	formula="${tool#*:}"
 	command -v "$cmd" >/dev/null 2>&1 || need="$need $formula"
@@ -31,25 +41,29 @@ wait_ollama() {
 	done
 }
 
-if ! version >/dev/null; then
-	echo "setup: starting Ollama"
-	brew services start ollama
-	wait_ollama
-fi
-min=0.40.9
-have="$(version | sed -n 's/.*"version":"\([0-9.]*\).*/\1/p')"
-if [ "$(printf '%s\n%s\n' "$min" "$have" | sort -V | head -n1)" != "$min" ]; then
-	if ! brew list ollama >/dev/null 2>&1; then
-		echo "setup: Ollama $have is older than $min, which the guardian model needs; update the Ollama app and re-run" >&2
-		exit 1
+if [ -n "$ollama" ]; then
+	if ! version >/dev/null; then
+		echo "setup: starting Ollama"
+		brew services start ollama
+		wait_ollama
 	fi
-	echo "setup: Ollama $have is older than $min, which the guardian model needs; upgrading"
-	brew upgrade ollama
-	brew services restart ollama
-	wait_ollama
+	min=0.40.9
+	have="$(version | sed -n 's/.*"version":"\([0-9.]*\).*/\1/p')"
+	if [ "$(printf '%s\n%s\n' "$min" "$have" | sort -V | head -n1)" != "$min" ]; then
+		if ! brew list ollama >/dev/null 2>&1; then
+			echo "setup: Ollama $have is older than $min, which the guardian model needs; update the Ollama app and re-run" >&2
+			exit 1
+		fi
+		echo "setup: Ollama $have is older than $min, which the guardian model needs; upgrading"
+		brew upgrade ollama
+		brew services restart ollama
+		wait_ollama
+	fi
+	ollama pull d3:2b
+	ollama pull embeddinggemma
+else
+	echo "setup: skipping Ollama, so every shell command outside the sandbox will ask you first; re-run with --ollama to add it"
 fi
-ollama pull d3:2b
-ollama pull embeddinggemma
 
 mkdir -p "$HOME/.local/bin"
 ln -sf "$root/bin/alux" "$HOME/.local/bin/alux"

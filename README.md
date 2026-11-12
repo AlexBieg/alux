@@ -18,14 +18,16 @@ alux
 ```
 
 `bin/setup` installs whatever is missing of mise (for Go), ripgrep, fd,
-Ollama, jj, gh and ffmpeg, starts Ollama, pulls the `d3:2b` and
-`embeddinggemma` models, and links `alux` into `~/.local/bin`. It is safe
-to re-run.
+jj, gh and ffmpeg, and links `alux` into `~/.local/bin`. It is safe to
+re-run.
+
+`bin/setup --ollama` also installs and starts Ollama and pulls the `d3:2b`
+and `embeddinggemma` models, which the guardian and record search use.
 
 `bin/alux` rebuilds the binary whenever the source changes. The first
 launch compiles it, which takes a minute.
 
-The two models take about 3.7 GB of disk. `d3:2b` needs about 8 GB of
+With `--ollama`, the two models take about 3.7 GB of disk. `d3:2b` needs about 8 GB of
 RAM, and both stay loaded for 30 minutes after their last use, so an 8 GB
 Mac will feel it.
 
@@ -58,7 +60,8 @@ outside the mode's kinds, or one it cannot judge, asks you first.
 
 The guardian cannot judge anything, so every shell command stops and asks
 you, and subagents running unattended have theirs refused. alux warns at
-launch when Ollama is missing, too old, or lacks the model.
+launch when Ollama is missing, too old, or lacks the model. Record search
+falls back to keyword and link matches.
 
 ## Configuration
 
